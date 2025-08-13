@@ -35,8 +35,8 @@ private:
     void setupTableView();
     void loadData();
     bool addActivationCode(const QString &serial, const QString &code, 
-                         const QString &project, const QString &chassis,
-                         const QString &licenseFile, const QString &kyinfoFile);
+                                 const QString &project, const QString &chassis,
+                                 const QString &licenseFilePath, const QString &kyinfoFilePath);
 
     // UI 组件
     QWidget *centralWidget;
