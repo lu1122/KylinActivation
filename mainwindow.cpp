@@ -10,6 +10,7 @@
 #include <QHeaderView>
 #include <QTimer>
 #include <QSqlError>
+#include <QDebug>
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
@@ -99,7 +100,7 @@ void MainWindow::setupSerialForm()
     bindWechatComboBox->addItems({"是", "否"});
     bindPersonLabel = new QLabel("绑定人:", addSerialGroup);
     bindPersonEdit = new QLineEdit(addSerialGroup);
-    bindPersonEdit->setEnabled(false);
+    bindPersonEdit->setEnabled(true);
     
     serialFormLayout->addWidget(bindWechatLabel, 3, 0);
     serialFormLayout->addWidget(bindWechatComboBox, 3, 1);
@@ -128,7 +129,7 @@ void MainWindow::setupSerialTable()
     serialTableView = new QTreeView(serialTableGroup);
     serialModel = new QStandardItemModel(this);
     serialModel->setHorizontalHeaderLabels({"序列号", "总激活次数", "剩余次数", "硬件平台", 
-                                          "验证码", "LICENSE", ".kyinfo", "绑定微信", "绑定人"});
+                                          "验证码", "LICENSE", ".kyinfo", "绑定微信", "绑定人", "激活码", "项目号", "机箱序列号"});
     serialTableView->setModel(serialModel);
 //    serialTableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     serialTableView->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -220,39 +221,19 @@ void MainWindow::loadActivationInfo()
         }
 
         if (parentItem) {
-            // 创建子项（9列，与主模型一致）
             QList<QStandardItem*> childItems;
+            // 创建子项（12列，比主模型多激活码、项目号、机箱号）
+            for (int i = 0; i < 9; ++i) {
+                childItems << new QStandardItem("");  // 填充剩余列
+            }
             childItems << new QStandardItem(activationCode);    // 列0
             childItems << new QStandardItem(projectNumber);     // 列1
             childItems << new QStandardItem(chassisNumber);     // 列2
-            for (int i = 3; i < 9; ++i) {
-                childItems << new QStandardItem("");  // 填充剩余列
-            }
+            
             // 添加到主行下
             parentItem->appendRow(childItems);
         }
     }
-    #if 0
-    activationModels.clear();
-
-    QSqlQuery query("SELECT * FROM activation_info");
-    while (query.next()) {
-        QString serialNumber = query.value("serial_number").toString();
-        
-        if (!activationModels.contains(serialNumber)) {
-            QStandardItemModel *model = new QStandardItemModel(this);
-            model->setHorizontalHeaderLabels({"激活码", "项目号", "机箱序列号"});
-            activationModels[serialNumber] = model;
-        }
-        
-        QList<QStandardItem*> items;
-        items << new QStandardItem(query.value("activation_code").toString());
-        items << new QStandardItem(query.value("project_number").toString());
-        items << new QStandardItem(query.value("chassis_number").toString());
-        
-        activationModels[serialNumber]->appendRow(items);
-    }
-    #endif
 }
 
 void MainWindow::addSerialNumber()
@@ -444,6 +425,105 @@ void MainWindow::modifySerialNumber()
 void MainWindow::addActivationInfo()
 {
     QModelIndex index = serialTableView->currentIndex();
+    if (!index.isValid()) {
+        qDebug() << "无效的索引";
+        return;
+    }
+
+    // 确保选中的是顶层主行（不是子项）
+    if (index.parent().isValid()) {
+        QMessageBox::warning(this, "提示", "请选择主行添加激活信息");
+        return;
+    }
+
+    QStandardItem *parentItem = serialModel->itemFromIndex(index);
+    if (!parentItem) {
+        qDebug() << "无法获取父项";
+        return;
+    }
+
+    QString serialNumber = serialModel->item(index.row(), 0)->text();
+    activationDialog = new ActivationDialog(serialNumber, this);
+
+    if (activationDialog->exec() == QDialog::Accepted) {
+        // 开始事务
+        QSqlDatabase::database().transaction();
+
+        // 1. 数据库插入
+        QSqlQuery query;
+        query.prepare("INSERT INTO activation_info (serial_number, activation_code, project_number, chassis_number) "
+                    "VALUES (?, ?, ?, ?)");
+        query.addBindValue(serialNumber);
+        query.addBindValue(activationDialog->getActivationCode());
+        query.addBindValue(activationDialog->getProjectNumber());
+        query.addBindValue(activationDialog->getChassisNumber());
+        
+        if (!query.exec()) {
+            QSqlDatabase::database().rollback();
+            QMessageBox::critical(this, "错误", "添加激活信息失败: " + query.lastError().text());
+            qDebug() << "数据库插入失败:" << query.lastError().text();
+            delete activationDialog;
+            return;
+        }
+
+        // 2. 添加子项（共9列，与主模型保持一致）
+        QList<QStandardItem*> childItems;
+        childItems << new QStandardItem("激活记录");  // 第0列
+        childItems << new QStandardItem(activationDialog->getActivationCode());  // 列1
+        childItems << new QStandardItem(activationDialog->getProjectNumber());   // 列2
+        childItems << new QStandardItem(activationDialog->getChassisNumber());   // 列3
+        
+        // 填充剩余列（4-8）为空
+        for (int i = 4; i < 9; ++i) {
+            childItems << new QStandardItem("");
+        }
+
+        // 添加子项到主行
+        parentItem->appendRow(childItems);
+        qDebug() << "已添加子项，父项现在有" << parentItem->rowCount() << "个子行";
+
+        // 3. 更新剩余激活次数
+        int remaining = serialModel->item(index.row(), 2)->text().toInt() - 1;
+        serialModel->item(index.row(), 2)->setText(QString::number(remaining));
+        
+        QSqlQuery updateQuery;
+        updateQuery.prepare("UPDATE serial_numbers SET remaining_activations = ? WHERE serial_number = ?");
+        updateQuery.addBindValue(remaining);
+        updateQuery.addBindValue(serialNumber);
+        
+        if (!updateQuery.exec()) {
+            QSqlDatabase::database().rollback();
+            QMessageBox::critical(this, "错误", "更新激活次数失败: " + updateQuery.lastError().text());
+            qDebug() << "更新激活次数失败:" << updateQuery.lastError().text();
+            delete activationDialog;
+            return;
+        }
+
+        // 提交事务
+        if (!QSqlDatabase::database().commit()) {
+            QMessageBox::critical(this, "错误", "提交事务失败");
+            qDebug() << "提交事务失败";
+            delete activationDialog;
+            return;
+        }
+
+        // 刷新视图
+        serialTableView->expand(index);
+        serialTableView->viewport()->update();
+        serialModel->layoutChanged();  // 强制刷新模型
+        
+        qDebug() << "激活信息添加成功，剩余激活次数:" << remaining;
+    }
+    
+    delete activationDialog;
+    // 加载数据
+    loadSerialNumbers();
+    loadActivationInfo();}
+
+#if 0
+void MainWindow::addActivationInfo()
+{
+    QModelIndex index = serialTableView->currentIndex();
     if (!index.isValid()) return;
 
     // 确保选中的是顶层主行（不是子项）
@@ -475,14 +555,13 @@ void MainWindow::addActivationInfo()
 
         // 2. 添加子项（关键修改：列数与主模型保持一致，共9列）
         QList<QStandardItem*> childItems;
+        for (int i = 0; i < 9; ++i) {
+            childItems << new QStandardItem("");  // 空值填充，确保列数一致
+        }
         // 前3列：激活信息（对应主模型的列0-2，内容自定义）
         childItems << new QStandardItem(activationDialog->getActivationCode());  // 列0
         childItems << new QStandardItem(activationDialog->getProjectNumber());   // 列1
-        childItems << new QStandardItem(activationDialog->getChassisNumber());   // 列2
-        // 剩余6列：留空（匹配主模型的9列，列3-8）
-        for (int i = 3; i < 9; ++i) {
-            childItems << new QStandardItem("");  // 空值填充，确保列数一致
-        }
+        childItems << new QStandardItem(activationDialog->getChassisNumber());   // 列2        
 
         // 添加子项到主行
         parentItem->appendRow(childItems);
@@ -500,56 +579,8 @@ void MainWindow::addActivationInfo()
         updateQuery.exec();
     }
     delete activationDialog;
-#if 0
-    QModelIndex index = serialTableView->currentIndex();
-    if (!index.isValid()) return;
-
-    QString serialNumber = serialModel->item(index.row(), 0)->text();
-    activationDialog = new ActivationDialog(serialNumber, this);
-    
-    if (activationDialog->exec() == QDialog::Accepted) {
-        // 插入数据库
-        QSqlQuery query;
-        query.prepare("INSERT INTO activation_info (serial_number, activation_code, project_number, chassis_number) "
-                     "VALUES (?, ?, ?, ?)");
-        query.addBindValue(serialNumber);
-        query.addBindValue(activationDialog->getActivationCode());
-        query.addBindValue(activationDialog->getProjectNumber());
-        query.addBindValue(activationDialog->getChassisNumber());
-        
-        if (!query.exec()) {
-            QMessageBox::critical(this, "错误", "添加激活信息失败: " + query.lastError().text());
-            return;
-        }
-
-        // 更新UI
-        if (!activationModels.contains(serialNumber)) {
-            QStandardItemModel *model = new QStandardItemModel(this);
-            model->setHorizontalHeaderLabels({"激活码", "项目号", "机箱序列号"});
-            activationModels[serialNumber] = model;
-        }
-        
-        QList<QStandardItem*> items;
-        items << new QStandardItem(activationDialog->getActivationCode());
-        items << new QStandardItem(activationDialog->getProjectNumber());
-        items << new QStandardItem(activationDialog->getChassisNumber());
-        
-        activationModels[serialNumber]->appendRow(items);
-
-        // 更新剩余激活次数
-        int remaining = serialModel->item(index.row(), 2)->text().toInt() - 1;
-        serialModel->item(index.row(), 2)->setText(QString::number(remaining));
-        
-        QSqlQuery updateQuery;
-        updateQuery.prepare("UPDATE serial_numbers SET remaining_activations = ? WHERE serial_number = ?");
-        updateQuery.addBindValue(remaining);
-        updateQuery.addBindValue(serialNumber);
-        updateQuery.exec();
-    }
-    delete activationDialog;
-#endif
 }
-
+#endif
 void MainWindow::deleteSerialNumber()
 {
     if (!verifyPassword()) {
