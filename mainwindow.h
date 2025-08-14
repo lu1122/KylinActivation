@@ -3,15 +3,23 @@
 
 #include <QMainWindow>
 #include <QSqlDatabase>
-#include <QSqlTableModel>
-#include <QPushButton>
-#include <QLineEdit>
-#include <QLabel>
-#include <QTableView>
+#include <QStandardItemModel>
+#include <QMap>
 #include <QGroupBox>
+#include <QLineEdit>
+#include <QComboBox>
+#include <QPushButton>
+#include <QLabel>
+#include <QTreeView>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QMenu>
 #include <QFileDialog>
+#include <QMessageBox>
+#include <QInputDialog>
+#include <QHeaderView>
+
+class ActivationDialog;
 
 class MainWindow : public QMainWindow
 {
@@ -22,63 +30,72 @@ public:
     ~MainWindow();
 
 private slots:
-    void onAddButtonClicked();
-    void onDeleteButtonClicked();
-    void onExportButtonClicked();
-    void onImportButtonClicked();
-    void onBrowseLicenseClicked();
-    void onBrowseKyinfoClicked();
+    void addSerialNumber();
+    void platformChanged(int index);
+    void bindWechatChanged(int index);
+    void uploadLicense();
+    void uploadKyinfo();
+    void showSerialContextMenu(const QPoint &pos);
+    void modifySerialNumber();
+    void addActivationInfo();
+    void deleteSerialNumber();
+    void downloadLicense();
+    void downloadKyinfo();
 
 private:
-    void initDatabase();
-    void setupUI();
-    void setupTableView();
-    void loadData();
-    bool addActivationCode(const QString &serial, const QString &code, 
-                                 const QString &project, const QString &chassis,
-                                 const QString &licenseFilePath, const QString &kyinfoFilePath);
-
     // UI 组件
     QWidget *centralWidget;
     QVBoxLayout *mainLayout;
     
-    // 输入区域
-    QGroupBox *inputGroup;
-    QGridLayout *inputLayout;
-    
-    QLabel *serialLabel;
-    QLineEdit *serialEdit;
-    
-    QLabel *codeLabel;
-    QLineEdit *codeEdit;
-    
-    QLabel *projectLabel;
-    QLineEdit *projectEdit;
-    
-    QLabel *chassisLabel;
-    QLineEdit *chassisEdit;
-    
-    QLabel *licenseLabel;
-    QLineEdit *licenseEdit;
-    QPushButton *browseLicenseButton;
-    
-    QLabel *kyinfoLabel;
-    QLineEdit *kyinfoEdit;
-    QPushButton *browseKyinfoButton;
-    
-    // 按钮区域
-    QHBoxLayout *buttonLayout;
+    // 添加序列号区域
+    QGroupBox *addSerialGroup;
+    QGridLayout *serialFormLayout;
+    QLabel *serialNumberLabel;
+    QLineEdit *serialNumberEdit;
+    QLabel *totalActivationsLabel;
+    QLineEdit *totalActivationsEdit;
+    QLabel *remainingActivationsLabel;
+    QLineEdit *remainingActivationsEdit;
+    QLabel *platformLabel;
+    QComboBox *platformComboBox;
+    QLabel *verificationCodeLabel;
+    QLineEdit *verificationCodeEdit;
+    QLabel *licenseFileLabel;
+    QPushButton *uploadLicenseButton;
+    QLabel *licenseFilePathLabel;
+    QLabel *kyinfoFileLabel;
+    QPushButton *uploadKyinfoButton;
+    QLabel *kyinfoFilePathLabel;
+    QLabel *bindWechatLabel;
+    QComboBox *bindWechatComboBox;
+    QLabel *bindPersonLabel;
+    QLineEdit *bindPersonEdit;
     QPushButton *addButton;
-    QPushButton *deleteButton;
-    QPushButton *exportButton;
-    QPushButton *importButton;
     
-    // 数据显示区域
-    QTableView *tableView;
+    // 序列号表格区域
+    QGroupBox *serialTableGroup;
+    QVBoxLayout *serialTableLayout;
+    QTreeView *serialTableView;
     
-    // 数据库相关
+    // 数据模型
+    QStandardItemModel *serialModel;
+    QMap<QString, QStandardItemModel*> activationModels;
+    ActivationDialog *activationDialog;
+
+    // 数据库
     QSqlDatabase db;
-    QSqlTableModel *model;
+
+    // 方法
+    bool initDatabase();
+    void loadSerialNumbers();
+    void loadActivationInfo();
+    bool verifyPassword();
+    void updateSerialNumberInDatabase(const QModelIndex &index);
+    void updateActivationInfoInDatabase(const QString &serialNumber, const QModelIndex &index);
+    
+    void setupUI();
+    void setupSerialForm();
+    void setupSerialTable();
 };
 
 #endif // MAINWINDOW_H

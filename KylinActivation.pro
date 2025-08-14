@@ -1,12 +1,13 @@
-QT       += core gui sql
-greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
+QT += core gui sql widgets
 
-TARGET = KylinActivation
+TARGET = KylinActivationManager
 TEMPLATE = app
 
 SOURCES += \
     main.cpp \
-    mainwindow.cpp
+    mainwindow.cpp \
+    activationdialog.cpp
 
 HEADERS += \
-    mainwindow.h
+    mainwindow.h \
+    activationdialog.h

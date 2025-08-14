@@ -1,29 +1,30 @@
 #include "mainwindow.h"
+#include "activationdialog.h"
 #include <QSqlQuery>
-#include <QSqlError>
 #include <QMessageBox>
+#include <QFileDialog>
 #include <QFile>
-#include <QTextStream>
-#include <QHeaderView>
 #include <QMenu>
+#include <QInputDialog>
+#include <QStandardItem>
+#include <QHeaderView>
+#include <QTimer>
+#include <QSqlError>
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
-    // 初始化UI
     setupUI();
-
+    
     // 初始化数据库
-    initDatabase();
-
-    // 设置表格视图
-    setupTableView();
+    if (!initDatabase()) {
+        QMessageBox::critical(this, "错误", "无法初始化数据库!");
+        QTimer::singleShot(0, this, &QMainWindow::close);
+        return;
+    }
 
     // 加载数据
-    loadData();
-
-    // 设置窗口属性
-    setWindowTitle("银河麒麟激活码管理平台");
-    resize(800, 600);
+    loadSerialNumbers();
+    loadActivationInfo();
 }
 
 MainWindow::~MainWindow()
@@ -33,388 +34,676 @@ MainWindow::~MainWindow()
 
 void MainWindow::setupUI()
 {
-    // 创建中央部件和主布局
     centralWidget = new QWidget(this);
     mainLayout = new QVBoxLayout(centralWidget);
+    
+    setupSerialForm();
+    setupSerialTable();
+    
     setCentralWidget(centralWidget);
-
-    // 创建输入区域
-    inputGroup = new QGroupBox("激活码信息", centralWidget);
-    inputLayout = new QGridLayout(inputGroup);
-
-    // 序列码
-    serialLabel = new QLabel("序列码:", inputGroup);
-    serialEdit = new QLineEdit(inputGroup);
-    inputLayout->addWidget(serialLabel, 0, 0);
-    inputLayout->addWidget(serialEdit, 0, 1);
-
-    // 激活码
-    codeLabel = new QLabel("激活码:", inputGroup);
-    codeEdit = new QLineEdit(inputGroup);
-    inputLayout->addWidget(codeLabel, 1, 0);
-    inputLayout->addWidget(codeEdit, 1, 1);
-
-    // 项目号
-    projectLabel = new QLabel("项目号:", inputGroup);
-    projectEdit = new QLineEdit(inputGroup);
-    inputLayout->addWidget(projectLabel, 2, 0);
-    inputLayout->addWidget(projectEdit, 2, 1);
-
-    // 机箱序列号
-    chassisLabel = new QLabel("机箱序列号:", inputGroup);
-    chassisEdit = new QLineEdit(inputGroup);
-    inputLayout->addWidget(chassisLabel, 3, 0);
-    inputLayout->addWidget(chassisEdit, 3, 1);
-
-    // LICENSE文件
-    licenseLabel = new QLabel("LICENSE文件:", inputGroup);
-    licenseEdit = new QLineEdit(inputGroup);
-    browseLicenseButton = new QPushButton("浏览...", inputGroup);
-    inputLayout->addWidget(licenseLabel, 4, 0);
-    inputLayout->addWidget(licenseEdit, 4, 1);
-    inputLayout->addWidget(browseLicenseButton, 4, 2);
-    connect(browseLicenseButton, &QPushButton::clicked, this, &MainWindow::onBrowseLicenseClicked);
-
-    // KYINFO文件
-    kyinfoLabel = new QLabel("KYINFO文件:", inputGroup);
-    kyinfoEdit = new QLineEdit(inputGroup);
-    browseKyinfoButton = new QPushButton("浏览...", inputGroup);
-    inputLayout->addWidget(kyinfoLabel, 5, 0);
-    inputLayout->addWidget(kyinfoEdit, 5, 1);
-    inputLayout->addWidget(browseKyinfoButton, 5, 2);
-    connect(browseKyinfoButton, &QPushButton::clicked, this, &MainWindow::onBrowseKyinfoClicked);
-
-    inputGroup->setLayout(inputLayout);
-    mainLayout->addWidget(inputGroup);
-
-    // 创建按钮区域
-    buttonLayout = new QHBoxLayout();
-
-    addButton = new QPushButton("添加", centralWidget);
-    deleteButton = new QPushButton("删除", centralWidget);
-    exportButton = new QPushButton("导出", centralWidget);
-    importButton = new QPushButton("导入", centralWidget);
-
-    buttonLayout->addWidget(addButton);
-    buttonLayout->addWidget(deleteButton);
-    buttonLayout->addWidget(exportButton);
-    buttonLayout->addWidget(importButton);
-
-    connect(addButton, &QPushButton::clicked, this, &MainWindow::onAddButtonClicked);
-    connect(deleteButton, &QPushButton::clicked, this, &MainWindow::onDeleteButtonClicked);
-    connect(exportButton, &QPushButton::clicked, this, &MainWindow::onExportButtonClicked);
-    connect(importButton, &QPushButton::clicked, this, &MainWindow::onImportButtonClicked);
-
-    mainLayout->addLayout(buttonLayout);
-
-    // 创建表格视图
-    tableView = new QTableView(centralWidget);
-    mainLayout->addWidget(tableView);
-    tableView->setContextMenuPolicy(Qt::CustomContextMenu);
-connect(tableView, &QTableView::customContextMenuRequested, this, [this](const QPoint &pos) {
-    QModelIndex index = tableView->indexAt(pos);
-    if (!index.isValid()) return;
-
-    int row = index.row();
-    QString licenseName = model->data(model->index(row, model->fieldIndex("license_file_name"))).toString();
-    QString kyinfoName = model->data(model->index(row, model->fieldIndex("kyinfo_file_name"))).toString();
-
-    QMenu menu;
-    QAction *downloadLicense = menu.addAction("下载LICENSE文件: " + licenseName);
-    QAction *downloadKyinfo = menu.addAction("下载KYINFO文件: " + kyinfoName);
-
-    QAction *selected = menu.exec(tableView->viewport()->mapToGlobal(pos));
-    if (selected == downloadLicense) {
-        QString savePath = QFileDialog::getSaveFileName(this, "保存LICENSE文件", licenseName);
-        if (!savePath.isEmpty()) {
-            QByteArray fileData = model->data(model->index(row, model->fieldIndex("license_file")), Qt::EditRole).toByteArray();
-            QFile file(savePath);
-            if (file.open(QIODevice::WriteOnly)) {
-                file.write(fileData);
-                file.close();
-                QMessageBox::information(this, "成功", "LICENSE文件保存成功！");
-            } else {
-                QMessageBox::critical(this, "错误", "无法保存文件: " + file.errorString());
-            }
-        }
-    } else if (selected == downloadKyinfo) {
-        QString savePath = QFileDialog::getSaveFileName(this, "保存KYINFO文件", kyinfoName);
-        if (!savePath.isEmpty()) {
-            QByteArray fileData = model->data(model->index(row, model->fieldIndex("kyinfo_file")), Qt::EditRole).toByteArray();
-            QFile file(savePath);
-            if (file.open(QIODevice::WriteOnly)) {
-                file.write(fileData);
-                file.close();
-                QMessageBox::information(this, "成功", "KYINFO文件保存成功！");
-            } else {
-                QMessageBox::critical(this, "错误", "无法保存文件: " + file.errorString());
-            }
-        }
-    }
-});
+    resize(1000, 600);
+    setWindowTitle("银河麒麟激活码管理平台");
 }
 
-void MainWindow::initDatabase()
+void MainWindow::setupSerialForm()
 {
-    // 使用SQLite数据库
+    addSerialGroup = new QGroupBox("添加序列号", centralWidget);
+    serialFormLayout = new QGridLayout(addSerialGroup);
+    
+    // 第一行
+    serialNumberLabel = new QLabel("序列号:", addSerialGroup);
+    serialNumberEdit = new QLineEdit(addSerialGroup);
+    totalActivationsLabel = new QLabel("总激活次数:", addSerialGroup);
+    totalActivationsEdit = new QLineEdit(addSerialGroup);
+    remainingActivationsLabel = new QLabel("剩余次数:", addSerialGroup);
+    remainingActivationsEdit = new QLineEdit(addSerialGroup);
+    
+    serialFormLayout->addWidget(serialNumberLabel, 0, 0);
+    serialFormLayout->addWidget(serialNumberEdit, 0, 1);
+    serialFormLayout->addWidget(totalActivationsLabel, 0, 2);
+    serialFormLayout->addWidget(totalActivationsEdit, 0, 3);
+    serialFormLayout->addWidget(remainingActivationsLabel, 0, 4);
+    serialFormLayout->addWidget(remainingActivationsEdit, 0, 5);
+    
+    // 第二行
+    platformLabel = new QLabel("硬件平台:", addSerialGroup);
+    platformComboBox = new QComboBox(addSerialGroup);
+    platformComboBox->addItems({"银河麒麟", "飞腾"});
+    verificationCodeLabel = new QLabel("验证码:", addSerialGroup);
+    verificationCodeEdit = new QLineEdit(addSerialGroup);
+    verificationCodeEdit->setEnabled(false);
+    
+    serialFormLayout->addWidget(platformLabel, 1, 0);
+    serialFormLayout->addWidget(platformComboBox, 1, 1);
+    serialFormLayout->addWidget(verificationCodeLabel, 1, 2);
+    serialFormLayout->addWidget(verificationCodeEdit, 1, 3);
+    
+    // 第三行
+    licenseFileLabel = new QLabel("LICENSE文件:", addSerialGroup);
+    uploadLicenseButton = new QPushButton("上传", addSerialGroup);
+    licenseFilePathLabel = new QLabel("未选择文件", addSerialGroup);
+    kyinfoFileLabel = new QLabel(".kyinfo文件:", addSerialGroup);
+    uploadKyinfoButton = new QPushButton("上传", addSerialGroup);
+    kyinfoFilePathLabel = new QLabel("未选择文件", addSerialGroup);
+    
+    serialFormLayout->addWidget(licenseFileLabel, 2, 0);
+    serialFormLayout->addWidget(uploadLicenseButton, 2, 1);
+    serialFormLayout->addWidget(licenseFilePathLabel, 2, 2, 1, 2);
+    serialFormLayout->addWidget(kyinfoFileLabel, 2, 4);
+    serialFormLayout->addWidget(uploadKyinfoButton, 2, 5);
+    serialFormLayout->addWidget(kyinfoFilePathLabel, 2, 6, 1, 2);
+    
+    // 第四行
+    bindWechatLabel = new QLabel("绑定微信:", addSerialGroup);
+    bindWechatComboBox = new QComboBox(addSerialGroup);
+    bindWechatComboBox->addItems({"是", "否"});
+    bindPersonLabel = new QLabel("绑定人:", addSerialGroup);
+    bindPersonEdit = new QLineEdit(addSerialGroup);
+    bindPersonEdit->setEnabled(false);
+    
+    serialFormLayout->addWidget(bindWechatLabel, 3, 0);
+    serialFormLayout->addWidget(bindWechatComboBox, 3, 1);
+    serialFormLayout->addWidget(bindPersonLabel, 3, 2);
+    serialFormLayout->addWidget(bindPersonEdit, 3, 3);
+    
+    // 添加按钮
+    addButton = new QPushButton("添加", addSerialGroup);
+    serialFormLayout->addWidget(addButton, 4, 0, 1, 8);
+    
+    mainLayout->addWidget(addSerialGroup);
+    
+    // 连接信号槽
+    connect(platformComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::platformChanged);
+    connect(bindWechatComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::bindWechatChanged);
+    connect(uploadLicenseButton, &QPushButton::clicked, this, &MainWindow::uploadLicense);
+    connect(uploadKyinfoButton, &QPushButton::clicked, this, &MainWindow::uploadKyinfo);
+    connect(addButton, &QPushButton::clicked, this, &MainWindow::addSerialNumber);
+}
+
+void MainWindow::setupSerialTable()
+{
+    serialTableGroup = new QGroupBox("序列号列表", centralWidget);
+    serialTableLayout = new QVBoxLayout(serialTableGroup);
+    
+    serialTableView = new QTreeView(serialTableGroup);
+    serialModel = new QStandardItemModel(this);
+    serialModel->setHorizontalHeaderLabels({"序列号", "总激活次数", "剩余次数", "硬件平台", 
+                                          "验证码", "LICENSE", ".kyinfo", "绑定微信", "绑定人"});
+    serialTableView->setModel(serialModel);
+//    serialTableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    serialTableView->setContextMenuPolicy(Qt::CustomContextMenu);
+    
+    serialTableLayout->addWidget(serialTableView);
+    mainLayout->addWidget(serialTableGroup);
+    
+    // 连接信号槽
+    connect(serialTableView, &QTreeView::customContextMenuRequested, this, &MainWindow::showSerialContextMenu);
+}
+
+bool MainWindow::initDatabase()
+{
     db = QSqlDatabase::addDatabase("QSQLITE");
     db.setDatabaseName("kylin_activation.db");
 
     if (!db.open()) {
-        QMessageBox::critical(this, "错误", "无法打开数据库: " + db.lastError().text());
-        return;
-    }
-
-    // 创建表（如果不存在）
-    QSqlQuery query;
-    query.exec("CREATE TABLE IF NOT EXISTS activation_codes ("
-           "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-           "serial_code TEXT NOT NULL, "
-           "activation_code TEXT NOT NULL, "
-           "project_number TEXT, "
-           "chassis_serial TEXT, "
-           "license_file BLOB, "  // 改为BLOB类型存储文件内容
-           "kyinfo_file BLOB, "   // 改为BLOB类型存储文件内容
-           "license_file_name TEXT, "  // 新增原始文件名
-           "kyinfo_file_name TEXT, "   // 新增原始文件名
-           "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
-}
-
-void MainWindow::setupTableView()
-{
-    model = new QSqlTableModel(this, db);
-    model->setTable("activation_codes");
-    model->setEditStrategy(QSqlTableModel::OnManualSubmit);
-
-    // 设置列标题 - 将时间设为第一列
-    model->setHeaderData(9, Qt::Horizontal, "创建时间");  // 时间列设为第一列显示
-    model->setHeaderData(1, Qt::Horizontal, "序列码");
-    model->setHeaderData(2, Qt::Horizontal, "激活码");
-    model->setHeaderData(3, Qt::Horizontal, "项目号");
-    model->setHeaderData(4, Qt::Horizontal, "机箱序列号");
-    model->setHeaderData(7, Qt::Horizontal, "LICENSE文件名");
-    model->setHeaderData(8, Qt::Horizontal, "KYINFO文件名");
-
-    tableView->setModel(model);
-
-    // 设置列显示顺序 - 将时间列移动到第一位置
-    tableView->setColumnHidden(0, true);  // 隐藏ID列
-    tableView->setColumnHidden(5, true);  // 隐藏LICENSE文件内容
-    tableView->setColumnHidden(6, true);  // 隐藏KYINFO文件内容
-
-    // 重新排列列顺序: 时间,序列码,激活码,项目号,机箱序列号,LICENSE文件名,KYINFO文件名
-    tableView->horizontalHeader()->moveSection(9, 0);  // 将时间列移动到第一位置
-
-    // 设置时间列显示格式
-    model->setHeaderData(0, Qt::Horizontal, "创建时间");
-    tableView->setColumnWidth(0, 150);  // 设置时间列宽度
-
-    tableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    tableView->setSelectionBehavior(QAbstractItemView::SelectRows);
-    tableView->setSelectionMode(QAbstractItemView::SingleSelection);
-}
-
-void MainWindow::loadData()
-{
-    if (!model->select()) {
-        QMessageBox::critical(this, "错误", "加载数据失败: " + model->lastError().text());
-    }
-}
-
-bool MainWindow::addActivationCode(const QString &serial, const QString &code,
-                                 const QString &project, const QString &chassis,
-                                 const QString &licenseFilePath, const QString &kyinfoFilePath)
-{
-    // 读取LICENSE文件内容
-    QFile licenseFile(licenseFilePath);
-    if (!licenseFile.open(QIODevice::ReadOnly)) {
-        QMessageBox::critical(this, "错误", "无法打开LICENSE文件: " + licenseFile.errorString());
         return false;
     }
-    QByteArray licenseData = licenseFile.readAll();
-    licenseFile.close();
 
-    // 读取KYINFO文件内容
-    QFile kyinfoFile(kyinfoFilePath);
-    if (!kyinfoFile.open(QIODevice::ReadOnly)) {
-        QMessageBox::critical(this, "错误", "无法打开KYINFO文件: " + kyinfoFile.errorString());
+    // 创建序列号表
+    QSqlQuery query;
+    if (!query.exec("CREATE TABLE IF NOT EXISTS serial_numbers ("
+                   "serial_number TEXT PRIMARY KEY, "
+                   "total_activations INTEGER, "
+                   "remaining_activations INTEGER, "
+                   "platform TEXT, "
+                   "verification_code TEXT, "
+                   "license_file BLOB, "
+                   "kyinfo_file BLOB, "
+                   "bind_wechat TEXT, "
+                   "bind_person TEXT)")) {
         return false;
     }
-    QByteArray kyinfoData = kyinfoFile.readAll();
-    kyinfoFile.close();
 
-    QSqlQuery query;
-        query.prepare("INSERT INTO activation_codes "
-                     "(serial_code, activation_code, project_number, chassis_serial, "
-                     "license_file, kyinfo_file, license_file_name, kyinfo_file_name) "
-                     "VALUES "
-                     "(:serial, :code, :project, :chassis, "
-                     ":license, :kyinfo, :license_name, :kyinfo_name)");
-
-        // 确保这8个参数都正确绑定
-        query.bindValue(":serial", serial);
-        query.bindValue(":code", code);
-        query.bindValue(":project", project);
-        query.bindValue(":chassis", chassis);
-        query.bindValue(":license", licenseData);
-        query.bindValue(":kyinfo", kyinfoData);
-        query.bindValue(":license_name", QFileInfo(licenseFilePath).fileName());
-        query.bindValue(":kyinfo_name", QFileInfo(kyinfoFilePath).fileName());
-
-        if (!query.exec()) {
-            QMessageBox::critical(this, "错误", "添加记录失败: " + query.lastError().text());
-            return false;
-        }
+    // 创建激活信息表
+    if (!query.exec("CREATE TABLE IF NOT EXISTS activation_info ("
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                   "serial_number TEXT, "
+                   "activation_code TEXT, "
+                   "project_number TEXT, "
+                   "chassis_number TEXT, "
+                   "FOREIGN KEY(serial_number) REFERENCES serial_numbers(serial_number))")) {
+        return false;
+    }
 
     return true;
 }
 
-void MainWindow::onAddButtonClicked()
+void MainWindow::loadSerialNumbers()
 {
-    QString serial = serialEdit->text().trimmed();
-    QString code = codeEdit->text().trimmed();
-    QString project = projectEdit->text().trimmed();
-    QString chassis = chassisEdit->text().trimmed();
-    QString licenseFile = licenseEdit->text();
-    QString kyinfoFile = kyinfoEdit->text();
+    serialModel->removeRows(0, serialModel->rowCount());
 
-    if (serial.isEmpty() || code.isEmpty()) {
-        QMessageBox::warning(this, "警告", "序列码和激活码不能为空！");
-        return;
-    }
-
-    if (addActivationCode(serial, code, project, chassis, licenseFile, kyinfoFile)) {
-        // 清空输入框
-        serialEdit->clear();
-        codeEdit->clear();
-        projectEdit->clear();
-        chassisEdit->clear();
-        licenseEdit->clear();
-        kyinfoEdit->clear();
-
-        // 刷新表格
-        loadData();
-
-        QMessageBox::information(this, "成功", "激活码添加成功！");
-    }
-}
-
-void MainWindow::onDeleteButtonClicked()
-{
-    QModelIndexList selection = tableView->selectionModel()->selectedRows();
-    if (selection.isEmpty()) {
-        QMessageBox::warning(this, "警告", "请先选择要删除的行！");
-        return;
-    }
-
-    int row = selection.first().row();
-    int id = model->data(model->index(row, 0)).toInt();
-
-    QSqlQuery query;
-    query.prepare("DELETE FROM activation_codes WHERE id = :id");
-    query.bindValue(":id", id);
-
-    if (query.exec()) {
-        loadData();
-        QMessageBox::information(this, "成功", "记录删除成功！");
-    } else {
-        QMessageBox::critical(this, "错误", "删除失败: " + query.lastError().text());
-    }
-}
-
-void MainWindow::onExportButtonClicked()
-{
-    QString fileName = QFileDialog::getSaveFileName(this, "导出数据", "", "CSV文件 (*.csv)");
-    if (fileName.isEmpty()) return;
-
-    QFile file(fileName);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::critical(this, "错误", "无法创建文件: " + file.errorString());
-        return;
-    }
-
-    QTextStream out(&file);
-    // 写入表头
-    out << tr("创建时间,序列码,激活码,项目号,机箱序列号,LICENSE文件名,KYINFO文件名\n");
-
-    // 写入数据 - 包含时间列
-    QSqlQuery query("SELECT created_at, serial_code, activation_code, project_number, "
-                   "chassis_serial, license_file_name, kyinfo_file_name FROM activation_codes");
+    QSqlQuery query("SELECT * FROM serial_numbers");
     while (query.next()) {
-        out << "\"" << query.value(0).toString() << "\","
-            << "\"" << query.value(1).toString() << "\","
-            << "\"" << query.value(2).toString() << "\","
-            << "\"" << query.value(3).toString() << "\","
-            << "\"" << query.value(4).toString() << "\","
-            << "\"" << query.value(5).toString() << "\","
-            << "\"" << query.value(6).toString() << "\"\n";
+        QList<QStandardItem*> items;
+        items << new QStandardItem(query.value("serial_number").toString());
+        items << new QStandardItem(query.value("total_activations").toString());
+        items << new QStandardItem(query.value("remaining_activations").toString());
+        items << new QStandardItem(query.value("platform").toString());
+        items << new QStandardItem(query.value("verification_code").toString());
+        items << new QStandardItem(query.value("license_file").isNull() ? "无" : "有");
+        items << new QStandardItem(query.value("kyinfo_file").isNull() ? "无" : "有");
+        items << new QStandardItem(query.value("bind_wechat").toString());
+        items << new QStandardItem(query.value("bind_person").toString());
+        
+        serialModel->appendRow(items);
     }
-
-    file.close();
-    QMessageBox::information(this, "成功", "数据导出成功！");
 }
 
-void MainWindow::onImportButtonClicked()
+void MainWindow::loadActivationInfo()
 {
-    QString fileName = QFileDialog::getOpenFileName(this, "导入数据", "", "CSV文件 (*.csv)");
-    if (fileName.isEmpty()) return;
+     // 遍历所有激活信息，添加到对应主行下作为子项
+    QSqlQuery query("SELECT * FROM activation_info");
+    while (query.next()) {
+        QString serialNumber = query.value("serial_number").toString();
+        QString activationCode = query.value("activation_code").toString();
+        QString projectNumber = query.value("project_number").toString();
+        QString chassisNumber = query.value("chassis_number").toString();
 
-    QFile file(fileName);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        QMessageBox::critical(this, "错误", "无法打开文件: " + file.errorString());
-        return;
-    }
-
-    QTextStream in(&file);
-    int importedCount = 0;
-
-    // 跳过表头
-    in.readLine();
-
-    db.transaction();
-
-    while (!in.atEnd()) {
-        QString line = in.readLine();
-        QStringList fields = line.split(',');
-
-        if (fields.size() < 6) continue;
-
-        // 去除字段中的引号
-        for (int i = 0; i < fields.size(); ++i) {
-            fields[i] = fields[i].trimmed();
-            if (fields[i].startsWith('"') && fields[i].endsWith('"')) {
-                fields[i] = fields[i].mid(1, fields[i].length() - 2);
+        // 查找对应的主行（顶层项）
+        QStandardItem *parentItem = nullptr;
+        for (int row = 0; row < serialModel->rowCount(); ++row) {
+            QStandardItem *item = serialModel->item(row, 0);  // 主行的序列号列
+            if (item && item->text() == serialNumber) {
+                parentItem = item;  // 找到主行的第一项（作为父项）
+                break;
             }
         }
 
-        if (addActivationCode(fields[0], fields[1], fields[2], fields[3], fields[4], fields[5])) {
-            importedCount++;
+        if (parentItem) {
+            // 创建子项（9列，与主模型一致）
+            QList<QStandardItem*> childItems;
+            childItems << new QStandardItem(activationCode);    // 列0
+            childItems << new QStandardItem(projectNumber);     // 列1
+            childItems << new QStandardItem(chassisNumber);     // 列2
+            for (int i = 3; i < 9; ++i) {
+                childItems << new QStandardItem("");  // 填充剩余列
+            }
+            // 添加到主行下
+            parentItem->appendRow(childItems);
         }
     }
+    #if 0
+    activationModels.clear();
 
-    if (!db.commit()) {
-        db.rollback();
-        QMessageBox::critical(this, "错误", "导入过程中出错，已回滚！");
+    QSqlQuery query("SELECT * FROM activation_info");
+    while (query.next()) {
+        QString serialNumber = query.value("serial_number").toString();
+        
+        if (!activationModels.contains(serialNumber)) {
+            QStandardItemModel *model = new QStandardItemModel(this);
+            model->setHorizontalHeaderLabels({"激活码", "项目号", "机箱序列号"});
+            activationModels[serialNumber] = model;
+        }
+        
+        QList<QStandardItem*> items;
+        items << new QStandardItem(query.value("activation_code").toString());
+        items << new QStandardItem(query.value("project_number").toString());
+        items << new QStandardItem(query.value("chassis_number").toString());
+        
+        activationModels[serialNumber]->appendRow(items);
+    }
+    #endif
+}
+
+void MainWindow::addSerialNumber()
+{
+    QString serialNumber = serialNumberEdit->text().trimmed();
+    QString totalActivations = totalActivationsEdit->text().trimmed();
+    QString remainingActivations = remainingActivationsEdit->text().trimmed();
+    QString platform = platformComboBox->currentText();
+    QString verificationCode = verificationCodeEdit->text().trimmed();
+    QString bindWechat = bindWechatComboBox->currentText();
+    QString bindPerson = bindPersonEdit->text().trimmed();
+
+    if (serialNumber.isEmpty() || totalActivations.isEmpty() || remainingActivations.isEmpty()) {
+        QMessageBox::warning(this, "警告", "请填写完整信息!");
         return;
     }
 
-    file.close();
-    loadData();
-    QMessageBox::information(this, "成功", QString("成功导入 %1 条记录！").arg(importedCount));
+    if (platform == "飞腾" && verificationCode.isEmpty()) {
+        QMessageBox::warning(this, "警告", "飞腾平台需要填写验证码!");
+        return;
+    }
+
+    if (bindWechat == "是" && bindPerson.isEmpty()) {
+        QMessageBox::warning(this, "警告", "绑定微信需要填写绑定人!");
+        return;
+    }
+
+    // 检查序列号是否已存在
+    QSqlQuery checkQuery;
+    checkQuery.prepare("SELECT COUNT(*) FROM serial_numbers WHERE serial_number = ?");
+    checkQuery.addBindValue(serialNumber);
+    if (checkQuery.exec() && checkQuery.next() && checkQuery.value(0).toInt() > 0) {
+        QMessageBox::warning(this, "警告", "该序列号已存在!");
+        return;
+    }
+
+    // 插入数据库
+    QSqlQuery query;
+    query.prepare("INSERT INTO serial_numbers (serial_number, total_activations, remaining_activations, "
+                 "platform, verification_code, license_file, kyinfo_file, bind_wechat, bind_person) "
+                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    
+    query.addBindValue(serialNumber);
+    query.addBindValue(totalActivations.toInt());
+    query.addBindValue(remainingActivations.toInt());
+    query.addBindValue(platform);
+    query.addBindValue(verificationCode);
+    
+    // 处理LICENSE文件
+    QByteArray licenseData;
+    if (platform == "银河麒麟" && licenseFilePathLabel->text() != "未选择文件") {
+        QFile file(licenseFilePathLabel->text());
+        if (file.open(QIODevice::ReadOnly)) {
+            licenseData = file.readAll();
+            file.close();
+        }
+    }
+    query.addBindValue(licenseData);
+    
+    // 处理.kyinfo文件
+    QByteArray kyinfoData;
+    if (platform == "银河麒麟" && kyinfoFilePathLabel->text() != "未选择文件") {
+        QFile file(kyinfoFilePathLabel->text());
+        if (file.open(QIODevice::ReadOnly)) {
+            kyinfoData = file.readAll();
+            file.close();
+        }
+    }
+    query.addBindValue(kyinfoData);
+    
+    query.addBindValue(bindWechat);
+    query.addBindValue(bindPerson);
+
+    if (!query.exec()) {
+        QMessageBox::critical(this, "错误", "添加序列号失败: " + query.lastError().text());
+        return;
+    }
+
+    // 更新UI
+    QList<QStandardItem*> items;
+    items << new QStandardItem(serialNumber);
+    items << new QStandardItem(totalActivations);
+    items << new QStandardItem(remainingActivations);
+    items << new QStandardItem(platform);
+    items << new QStandardItem(verificationCode);
+    items << new QStandardItem(licenseData.isEmpty() ? "无" : "有");
+    items << new QStandardItem(kyinfoData.isEmpty() ? "无" : "有");
+    items << new QStandardItem(bindWechat);
+    items << new QStandardItem(bindPerson);
+    
+    serialModel->appendRow(items);
+
+    // 清空输入
+    serialNumberEdit->clear();
+    totalActivationsEdit->clear();
+    remainingActivationsEdit->clear();
+    verificationCodeEdit->clear();
+    licenseFilePathLabel->setText("未选择文件");
+    kyinfoFilePathLabel->setText("未选择文件");
+    bindPersonEdit->clear();
 }
 
-void MainWindow::onBrowseLicenseClicked()
+void MainWindow::platformChanged(int index)
 {
-    QString fileName = QFileDialog::getOpenFileName(this, "选择LICENSE文件");
-    if (!fileName.isEmpty()) {
-        licenseEdit->setText(fileName);
+    bool isKylin = (platformComboBox->currentText() == "银河麒麟");
+    
+    verificationCodeEdit->setEnabled(!isKylin);
+    uploadLicenseButton->setEnabled(isKylin);
+    uploadKyinfoButton->setEnabled(isKylin);
+    
+    if (!isKylin) {
+        licenseFilePathLabel->setText("未选择文件");
+        kyinfoFilePathLabel->setText("未选择文件");
     }
 }
 
-void MainWindow::onBrowseKyinfoClicked()
+void MainWindow::bindWechatChanged(int index)
 {
-    QString fileName = QFileDialog::getOpenFileName(this, "选择KYINFO文件");
-    if (!fileName.isEmpty()) {
-        kyinfoEdit->setText(fileName);
+    bindPersonEdit->setEnabled(bindWechatComboBox->currentText() == "是");
+    if (bindWechatComboBox->currentText() == "否") {
+        bindPersonEdit->clear();
     }
+}
+
+void MainWindow::uploadLicense()
+{
+    QString filePath = QFileDialog::getOpenFileName(this, "选择LICENSE文件"/*, "", "License Files (*.lic *.license)"*/);
+    if (!filePath.isEmpty()) {
+        licenseFilePathLabel->setText(filePath);
+    }
+}
+
+void MainWindow::uploadKyinfo()
+{
+    QString filePath = QFileDialog::getOpenFileName(this, "选择.kyinfo文件"/*, "", "Kyinfo Files (*.kyinfo)"*/);
+    if (!filePath.isEmpty()) {
+        kyinfoFilePathLabel->setText(filePath);
+    }
+}
+
+void MainWindow::showSerialContextMenu(const QPoint &pos)
+{
+    QModelIndex index = serialTableView->indexAt(pos);
+    if (!index.isValid()) return;
+
+    QMenu contextMenu(this);
+
+    QAction *modifyAction = new QAction("修改", this);
+    connect(modifyAction, &QAction::triggered, this, &MainWindow::modifySerialNumber);
+    contextMenu.addAction(modifyAction);
+
+    QAction *addAction = new QAction("增加激活信息", this);
+    connect(addAction, &QAction::triggered, this, &MainWindow::addActivationInfo);
+    contextMenu.addAction(addAction);
+
+    QAction *deleteAction = new QAction("删除", this);
+    connect(deleteAction, &QAction::triggered, this, &MainWindow::deleteSerialNumber);
+    contextMenu.addAction(deleteAction);
+
+    QAction *downloadLicenseAction = new QAction("下载LICENSE", this);
+    connect(downloadLicenseAction, &QAction::triggered, this, &MainWindow::downloadLicense);
+    contextMenu.addAction(downloadLicenseAction);
+
+    QAction *downloadKyinfoAction = new QAction("下载.kyinfo", this);
+    connect(downloadKyinfoAction, &QAction::triggered, this, &MainWindow::downloadKyinfo);
+    contextMenu.addAction(downloadKyinfoAction);
+
+    contextMenu.exec(serialTableView->viewport()->mapToGlobal(pos));
+}
+
+void MainWindow::modifySerialNumber()
+{
+    if (!verifyPassword()) {
+        return;
+    }
+
+    QModelIndex index = serialTableView->currentIndex();
+    if (!index.isValid()) return;
+
+    bool ok;
+    QString newValue = QInputDialog::getText(this, "修改", "输入新值:", QLineEdit::Normal, 
+                                           index.data().toString(), &ok);
+    if (ok && !newValue.isEmpty()) {
+        serialModel->itemFromIndex(index)->setText(newValue);
+        updateSerialNumberInDatabase(index);
+    }
+}
+
+void MainWindow::addActivationInfo()
+{
+    QModelIndex index = serialTableView->currentIndex();
+    if (!index.isValid()) return;
+
+    // 确保选中的是顶层主行（不是子项）
+    if (index.parent().isValid()) {
+        QMessageBox::warning(this, "提示", "请选择主行添加激活信息");
+        return;
+    }
+
+    QStandardItem *parentItem = serialModel->itemFromIndex(index);
+    if (!parentItem) return;
+
+    QString serialNumber = serialModel->item(index.row(), 0)->text();
+    activationDialog = new ActivationDialog(serialNumber, this);
+
+    if (activationDialog->exec() == QDialog::Accepted) {
+        // 1. 数据库插入（保持不变）
+        QSqlQuery query;
+        query.prepare("INSERT INTO activation_info (serial_number, activation_code, project_number, chassis_number) "
+                    "VALUES (?, ?, ?, ?)");
+        query.addBindValue(serialNumber);
+        query.addBindValue(activationDialog->getActivationCode());
+        query.addBindValue(activationDialog->getProjectNumber());
+        query.addBindValue(activationDialog->getChassisNumber());
+        
+        if (!query.exec()) {
+            QMessageBox::critical(this, "错误", "添加激活信息失败: " + query.lastError().text());
+            return;
+        }
+
+        // 2. 添加子项（关键修改：列数与主模型保持一致，共9列）
+        QList<QStandardItem*> childItems;
+        // 前3列：激活信息（对应主模型的列0-2，内容自定义）
+        childItems << new QStandardItem(activationDialog->getActivationCode());  // 列0
+        childItems << new QStandardItem(activationDialog->getProjectNumber());   // 列1
+        childItems << new QStandardItem(activationDialog->getChassisNumber());   // 列2
+        // 剩余6列：留空（匹配主模型的9列，列3-8）
+        for (int i = 3; i < 9; ++i) {
+            childItems << new QStandardItem("");  // 空值填充，确保列数一致
+        }
+
+        // 添加子项到主行
+        parentItem->appendRow(childItems);
+        // 自动展开主行
+        serialTableView->expand(index);
+
+        // 3. 更新剩余激活次数（保持不变）
+        int remaining = serialModel->item(index.row(), 2)->text().toInt() - 1;
+        serialModel->item(index.row(), 2)->setText(QString::number(remaining));
+        
+        QSqlQuery updateQuery;
+        updateQuery.prepare("UPDATE serial_numbers SET remaining_activations = ? WHERE serial_number = ?");
+        updateQuery.addBindValue(remaining);
+        updateQuery.addBindValue(serialNumber);
+        updateQuery.exec();
+    }
+    delete activationDialog;
+#if 0
+    QModelIndex index = serialTableView->currentIndex();
+    if (!index.isValid()) return;
+
+    QString serialNumber = serialModel->item(index.row(), 0)->text();
+    activationDialog = new ActivationDialog(serialNumber, this);
+    
+    if (activationDialog->exec() == QDialog::Accepted) {
+        // 插入数据库
+        QSqlQuery query;
+        query.prepare("INSERT INTO activation_info (serial_number, activation_code, project_number, chassis_number) "
+                     "VALUES (?, ?, ?, ?)");
+        query.addBindValue(serialNumber);
+        query.addBindValue(activationDialog->getActivationCode());
+        query.addBindValue(activationDialog->getProjectNumber());
+        query.addBindValue(activationDialog->getChassisNumber());
+        
+        if (!query.exec()) {
+            QMessageBox::critical(this, "错误", "添加激活信息失败: " + query.lastError().text());
+            return;
+        }
+
+        // 更新UI
+        if (!activationModels.contains(serialNumber)) {
+            QStandardItemModel *model = new QStandardItemModel(this);
+            model->setHorizontalHeaderLabels({"激活码", "项目号", "机箱序列号"});
+            activationModels[serialNumber] = model;
+        }
+        
+        QList<QStandardItem*> items;
+        items << new QStandardItem(activationDialog->getActivationCode());
+        items << new QStandardItem(activationDialog->getProjectNumber());
+        items << new QStandardItem(activationDialog->getChassisNumber());
+        
+        activationModels[serialNumber]->appendRow(items);
+
+        // 更新剩余激活次数
+        int remaining = serialModel->item(index.row(), 2)->text().toInt() - 1;
+        serialModel->item(index.row(), 2)->setText(QString::number(remaining));
+        
+        QSqlQuery updateQuery;
+        updateQuery.prepare("UPDATE serial_numbers SET remaining_activations = ? WHERE serial_number = ?");
+        updateQuery.addBindValue(remaining);
+        updateQuery.addBindValue(serialNumber);
+        updateQuery.exec();
+    }
+    delete activationDialog;
+#endif
+}
+
+void MainWindow::deleteSerialNumber()
+{
+    if (!verifyPassword()) {
+        return;
+    }
+
+    QModelIndex index = serialTableView->currentIndex();
+    if (!index.isValid()) return;
+
+    QString serialNumber = serialModel->item(index.row(), 0)->text();
+
+    // 从数据库删除
+    QSqlQuery query;
+    query.prepare("DELETE FROM serial_numbers WHERE serial_number = ?");
+    query.addBindValue(serialNumber);
+    
+    if (!query.exec()) {
+        QMessageBox::critical(this, "错误", "删除序列号失败: " + query.lastError().text());
+        return;
+    }
+
+    // 删除关联的激活信息
+    query.prepare("DELETE FROM activation_info WHERE serial_number = ?");
+    query.addBindValue(serialNumber);
+    query.exec();
+
+    // 更新UI
+    serialModel->removeRow(index.row());
+    activationModels.remove(serialNumber);
+}
+
+void MainWindow::downloadLicense()
+{
+    QModelIndex index = serialTableView->currentIndex();
+    if (!index.isValid()) return;
+
+    QString serialNumber = serialModel->item(index.row(), 0)->text();
+    
+    QSqlQuery query;
+    query.prepare("SELECT license_file FROM serial_numbers WHERE serial_number = ?");
+    query.addBindValue(serialNumber);
+    
+    if (query.exec() && query.next()) {
+        QByteArray fileData = query.value(0).toByteArray();
+        if (fileData.isEmpty()) {
+            QMessageBox::information(this, "提示", "没有LICENSE文件");
+            return;
+        }
+        
+        QString savePath = QFileDialog::getSaveFileName(this, "保存LICENSE文件", 
+                                                      serialNumber + ".license", "License Files (*.license)");
+        if (!savePath.isEmpty()) {
+            QFile file(savePath);
+            if (file.open(QIODevice::WriteOnly)) {
+                file.write(fileData);
+                file.close();
+                QMessageBox::information(this, "成功", "LICENSE文件已保存");
+            } else {
+                QMessageBox::critical(this, "错误", "无法保存文件");
+            }
+        }
+    }
+}
+
+void MainWindow::downloadKyinfo()
+{
+    QModelIndex index = serialTableView->currentIndex();
+    if (!index.isValid()) return;
+
+    QString serialNumber = serialModel->item(index.row(), 0)->text();
+    
+    QSqlQuery query;
+    query.prepare("SELECT kyinfo_file FROM serial_numbers WHERE serial_number = ?");
+    query.addBindValue(serialNumber);
+    
+    if (query.exec() && query.next()) {
+        QByteArray fileData = query.value(0).toByteArray();
+        if (fileData.isEmpty()) {
+            QMessageBox::information(this, "提示", "没有.kyinfo文件");
+            return;
+        }
+        
+        QString savePath = QFileDialog::getSaveFileName(this, "保存.kyinfo文件", 
+                                                      serialNumber + ".kyinfo", "Kyinfo Files (*.kyinfo)");
+        if (!savePath.isEmpty()) {
+            QFile file(savePath);
+            if (file.open(QIODevice::WriteOnly)) {
+                file.write(fileData);
+                file.close();
+                QMessageBox::information(this, "成功", ".kyinfo文件已保存");
+            } else {
+                QMessageBox::critical(this, "错误", "无法保存文件");
+            }
+        }
+    }
+}
+
+bool MainWindow::verifyPassword()
+{
+    bool ok;
+    QString password = QInputDialog::getText(this, "密码验证", "请输入密码:", 
+                                           QLineEdit::Password, "", &ok);
+    
+    if (ok && password == "000000") {
+        return true;
+    } else if (ok) {
+        QMessageBox::warning(this, "错误", "密码错误!");
+    }
+    
+    return false;
+}
+
+void MainWindow::updateSerialNumberInDatabase(const QModelIndex &index)
+{
+    QString serialNumber = serialModel->item(index.row(), 0)->text();
+    QString columnName;
+    
+    switch (index.column()) {
+    case 0: columnName = "serial_number"; break;
+    case 1: columnName = "total_activations"; break;
+    case 2: columnName = "remaining_activations"; break;
+    case 3: columnName = "platform"; break;
+    case 4: columnName = "verification_code"; break;
+    case 5: columnName = "license_file"; break;
+    case 6: columnName = "kyinfo_file"; break;
+    case 7: columnName = "bind_wechat"; break;
+    case 8: columnName = "bind_person"; break;
+    default: return;
+    }
+    
+    QSqlQuery query;
+    query.prepare(QString("UPDATE serial_numbers SET %1 = ? WHERE serial_number = ?").arg(columnName));
+    query.addBindValue(index.data().toString());
+    query.addBindValue(serialNumber);
+    query.exec();
+}
+
+void MainWindow::updateActivationInfoInDatabase(const QString &serialNumber, const QModelIndex &index)
+{
+    int row = index.row();
+    QString activationCode = activationModels[serialNumber]->item(row, 0)->text();
+    
+    QString columnName;
+    switch (index.column()) {
+    case 0: columnName = "activation_code"; break;
+    case 1: columnName = "project_number"; break;
+    case 2: columnName = "chassis_number"; break;
+    default: return;
+    }
+    
+    QSqlQuery query;
+    query.prepare(QString("UPDATE activation_info SET %1 = ? WHERE serial_number = ? AND activation_code = ?").arg(columnName));
+    query.addBindValue(index.data().toString());
+    query.addBindValue(serialNumber);
+    query.addBindValue(activationCode);
+    query.exec();
 }
