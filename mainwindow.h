@@ -36,6 +36,9 @@ private slots:
     void uploadLicense();
     void uploadKyinfo();
     void showSerialContextMenu(const QPoint &pos);
+    void modifyChildItem();
+    void deleteChildItem(const QModelIndex &index);
+    void updateChildItemInDatabase(const QModelIndex &index);
     void modifySerialNumber();
     void addActivationInfo();
     void deleteSerialNumber();

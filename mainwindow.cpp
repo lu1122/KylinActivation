@@ -554,28 +554,155 @@ void MainWindow::showSerialContextMenu(const QPoint &pos)
     if (!index.isValid()) return;
 
     QMenu contextMenu(this);
+    bool isTopLevel = !index.parent().isValid(); // 判断是否是主行
 
-    QAction *modifyAction = new QAction("修改", this);
-    connect(modifyAction, &QAction::triggered, this, &MainWindow::modifySerialNumber);
-    contextMenu.addAction(modifyAction);
+    if (isTopLevel) {
+        // 主行菜单项
+        QAction *modifyAction = new QAction("修改", this);
+        connect(modifyAction, &QAction::triggered, this, &MainWindow::modifySerialNumber);
+        contextMenu.addAction(modifyAction);
 
-    QAction *addAction = new QAction("增加激活信息", this);
-    connect(addAction, &QAction::triggered, this, &MainWindow::addActivationInfo);
-    contextMenu.addAction(addAction);
+        QAction *addAction = new QAction("增加激活信息", this);
+        connect(addAction, &QAction::triggered, this, &MainWindow::addActivationInfo);
+        contextMenu.addAction(addAction);
 
-    QAction *deleteAction = new QAction("删除", this);
-    connect(deleteAction, &QAction::triggered, this, &MainWindow::deleteSerialNumber);
-    contextMenu.addAction(deleteAction);
+        QAction *deleteAction = new QAction("删除主行", this);
+        connect(deleteAction, &QAction::triggered, this, &MainWindow::deleteSerialNumber);
+        contextMenu.addAction(deleteAction);
 
-    QAction *downloadLicenseAction = new QAction("下载LICENSE", this);
-    connect(downloadLicenseAction, &QAction::triggered, this, &MainWindow::downloadLicense);
-    contextMenu.addAction(downloadLicenseAction);
+        QAction *downloadLicenseAction = new QAction("下载LICENSE", this);
+        connect(downloadLicenseAction, &QAction::triggered, this, &MainWindow::downloadLicense);
+        contextMenu.addAction(downloadLicenseAction);
 
-    QAction *downloadKyinfoAction = new QAction("下载.kyinfo", this);
-    connect(downloadKyinfoAction, &QAction::triggered, this, &MainWindow::downloadKyinfo);
-    contextMenu.addAction(downloadKyinfoAction);
+        QAction *downloadKyinfoAction = new QAction("下载.kyinfo", this);
+        connect(downloadKyinfoAction, &QAction::triggered, this, &MainWindow::downloadKyinfo);
+        contextMenu.addAction(downloadKyinfoAction);
+    } else {
+        // 子行菜单项
+        QAction *modifyChildAction = new QAction("修改子项", this);
+        connect(modifyChildAction, &QAction::triggered, this, &MainWindow::modifyChildItem);
+        contextMenu.addAction(modifyChildAction);
+
+        QAction *deleteChildAction = new QAction("删除子项", this);
+        connect(deleteChildAction, &QAction::triggered, this, [this, index]() {
+            deleteChildItem(index);
+        });
+        contextMenu.addAction(deleteChildAction);
+    }
 
     contextMenu.exec(serialTableView->viewport()->mapToGlobal(pos));
+}
+
+
+void MainWindow::modifyChildItem()
+{
+    QModelIndex index = serialTableView->currentIndex();
+    if (!index.isValid() || !index.parent().isValid()) return;
+
+    bool ok;
+    QString newValue = QInputDialog::getText(this, "修改子项", "输入新值:", 
+                                          QLineEdit::Normal, index.data().toString(), &ok);
+    if (ok && !newValue.isEmpty()) {
+        serialModel->itemFromIndex(index)->setText(newValue);
+        updateChildItemInDatabase(index);
+    }
+}
+
+void MainWindow::deleteChildItem(const QModelIndex &index)
+{
+    // 1. 先验证密码
+    if (!verifyPassword()) {
+        return;
+    }
+    
+    if (!index.isValid() || !index.parent().isValid()) {
+        qDebug() << "无效的索引或不是子项";
+        return;
+    }
+
+    // 获取父项(主行)的序列号
+    QStandardItem *parentItem = serialModel->itemFromIndex(index.parent());
+    if (!parentItem) {
+        qDebug() << "无法获取父项";
+        return;
+    }
+
+    QString serialNumber = parentItem->text();
+    
+    // 获取子项的激活码（假设激活码在第9列，根据实际调整）
+    QStandardItem *childItem = serialModel->itemFromIndex(index.sibling(index.row(), 9));
+    if (!childItem) {
+        qDebug() << "无法获取子项的激活码";
+        return;
+    }
+    QString activationCode = childItem->text();
+
+    // 开始事务
+    QSqlDatabase::database().transaction();
+
+    try {
+        // 1. 从数据库删除激活信息
+        QSqlQuery deleteQuery;
+        deleteQuery.prepare("DELETE FROM activation_info WHERE serial_number = ? AND activation_code = ?");
+        deleteQuery.addBindValue(serialNumber);
+        deleteQuery.addBindValue(activationCode);
+        
+        if (!deleteQuery.exec()) {
+            throw std::runtime_error("删除激活信息失败: " + deleteQuery.lastError().text().toStdString());
+        }
+
+        // 2. 更新主行的剩余激活次数（+1）
+        int remaining = serialModel->item(index.parent().row(), 2)->text().toInt() + 1;
+        serialModel->item(index.parent().row(), 2)->setText(QString::number(remaining));
+        
+        QSqlQuery updateQuery;
+        updateQuery.prepare("UPDATE serial_numbers SET remaining_activations = ? WHERE serial_number = ?");
+        updateQuery.addBindValue(remaining);
+        updateQuery.addBindValue(serialNumber);
+        
+        if (!updateQuery.exec()) {
+            throw std::runtime_error("更新剩余激活次数失败: " + updateQuery.lastError().text().toStdString());
+        }
+
+        // 3. 从界面删除子项
+        parentItem->removeRow(index.row());
+
+        // 提交事务
+        if (!QSqlDatabase::database().commit()) {
+            throw std::runtime_error("提交事务失败");
+        }
+
+        qDebug() << "成功删除子项:" << activationCode << "序列号:" << serialNumber;
+
+    } catch (const std::exception &e) {
+        QSqlDatabase::database().rollback();
+        QMessageBox::critical(this, "错误", QString::fromStdString(e.what()));
+        qDebug() << "删除子项时出错:" << e.what();
+    }
+}
+
+void MainWindow::updateChildItemInDatabase(const QModelIndex &index)
+{
+    if (!index.isValid() || !index.parent().isValid()) return;
+
+    QString serialNumber = serialModel->itemFromIndex(index.parent())->text();
+    QString oldActivationCode = serialModel->itemFromIndex(index.sibling(index.row(), 0))->text();
+    QString columnName;
+    
+    switch (index.column()) {
+    case 0: columnName = "activation_code"; break;
+    case 1: columnName = "project_number"; break;
+    case 2: columnName = "chassis_number"; break;
+    default: return;
+    }
+    
+    QSqlQuery query;
+    query.prepare(QString("UPDATE activation_info SET %1 = ? WHERE serial_number = ? AND activation_code = ?")
+                 .arg(columnName));
+    query.addBindValue(index.data().toString());
+    query.addBindValue(serialNumber);
+    query.addBindValue(oldActivationCode);
+    query.exec();
 }
 
 void MainWindow::modifySerialNumber()
@@ -692,8 +819,8 @@ void MainWindow::addActivationInfo()
     delete activationDialog;
     // 加载数据
     loadSerialNumbers();
-    loadActivationInfo();}
-
+    loadActivationInfo();
+}
 
 void MainWindow::deleteSerialNumber()
 {
@@ -702,28 +829,34 @@ void MainWindow::deleteSerialNumber()
     }
 
     QModelIndex index = serialTableView->currentIndex();
-    if (!index.isValid()) return;
+    if (!index.isValid() || index.parent().isValid()) return; // 确保是主行
 
     QString serialNumber = serialModel->item(index.row(), 0)->text();
 
-    // 从数据库删除
+    // 从数据库删除主行和所有关联的子行
+    QSqlDatabase::database().transaction();
+    
     QSqlQuery query;
+    query.prepare("DELETE FROM activation_info WHERE serial_number = ?");
+    query.addBindValue(serialNumber);
+    if (!query.exec()) {
+        QSqlDatabase::database().rollback();
+        QMessageBox::critical(this, "错误", "删除关联激活信息失败: " + query.lastError().text());
+        return;
+    }
+    
     query.prepare("DELETE FROM serial_numbers WHERE serial_number = ?");
     query.addBindValue(serialNumber);
-    
     if (!query.exec()) {
+        QSqlDatabase::database().rollback();
         QMessageBox::critical(this, "错误", "删除序列号失败: " + query.lastError().text());
         return;
     }
-
-    // 删除关联的激活信息
-    query.prepare("DELETE FROM activation_info WHERE serial_number = ?");
-    query.addBindValue(serialNumber);
-    query.exec();
+    
+    QSqlDatabase::database().commit();
 
     // 更新UI
     serialModel->removeRow(index.row());
-    activationModels.remove(serialNumber);
 }
 
 void MainWindow::downloadLicense()
