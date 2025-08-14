@@ -11,11 +11,12 @@
 #include <QTimer>
 #include <QSqlError>
 #include <QDebug>
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
     setupUI();
-    
+
     // 初始化数据库
     if (!initDatabase()) {
         QMessageBox::critical(this, "错误", "无法初始化数据库!");
@@ -26,6 +27,10 @@ MainWindow::MainWindow(QWidget *parent)
     // 加载数据
     loadSerialNumbers();
     loadActivationInfo();
+
+    // 初始化搜索相关
+    setupSearchDialog();
+    currentSearchIndex = -1;
 }
 
 MainWindow::~MainWindow()
@@ -44,6 +49,14 @@ void MainWindow::setupUI()
     setCentralWidget(centralWidget);
     resize(1000, 600);
     setWindowTitle("银河麒麟激活码管理平台");
+
+    // 添加快捷键
+    searchShortcut = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_S), this);
+    connect(searchShortcut, &QShortcut::activated, [this]() {
+        qDebug() << "Ctrl+F pressed";  // 调试输出
+        searchDialog->show();
+        searchEdit->setFocus();
+    });
 }
 
 void MainWindow::setupSerialForm()
@@ -139,6 +152,8 @@ void MainWindow::setupSerialTable()
     
     // 连接信号槽
     connect(serialTableView, &QTreeView::customContextMenuRequested, this, &MainWindow::showSerialContextMenu);
+    // 禁用双击编辑
+    serialTableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
 }
 
 bool MainWindow::initDatabase()
@@ -232,6 +247,165 @@ void MainWindow::loadActivationInfo()
             
             // 添加到主行下
             parentItem->appendRow(childItems);
+        }
+    }
+}
+
+void MainWindow::setupSearchDialog()
+{
+    searchDialog = new QDialog(this);
+    searchDialog->setWindowTitle("搜索");
+    searchDialog->setModal(false);
+    
+    QVBoxLayout *layout = new QVBoxLayout(searchDialog);
+    
+    // 搜索字段选择
+    QHBoxLayout *fieldLayout = new QHBoxLayout();
+    QLabel *fieldLabel = new QLabel("搜索字段:", searchDialog);
+    searchFieldCombo = new QComboBox(searchDialog);
+    searchFieldCombo->addItems({"序列号", "激活码", "项目号", "机箱序列号"});
+    fieldLayout->addWidget(fieldLabel);
+    fieldLayout->addWidget(searchFieldCombo);
+    
+    // 搜索输入框
+    searchEdit = new QLineEdit(searchDialog);
+    
+    // 按钮
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    searchNextButton = new QPushButton("下一个", searchDialog);
+    searchPrevButton = new QPushButton("上一个", searchDialog);
+    // QPushButton *closeButton = new QPushButton("关闭", searchDialog);
+    buttonLayout->addWidget(searchPrevButton);
+    buttonLayout->addWidget(searchNextButton);
+    // buttonLayout->addWidget(closeButton);
+    
+    layout->addLayout(fieldLayout);
+    layout->addWidget(searchEdit);
+    layout->addLayout(buttonLayout);
+    
+    // 添加文本变化实时搜索
+    connect(searchEdit, &QLineEdit::textChanged, this, &MainWindow::performSearch);
+    // 连接信号槽
+    connect(searchEdit, &QLineEdit::returnPressed, this, &MainWindow::performSearch);
+    connect(searchNextButton, &QPushButton::clicked, this, &MainWindow::findNext);
+    connect(searchPrevButton, &QPushButton::clicked, this, &MainWindow::findPrev);
+    // connect(closeButton, &QPushButton::clicked, searchDialog, &QDialog::hide);
+    // 添加对话框关闭事件处理
+    connect(searchDialog, &QDialog::finished, this, [this](int result) {
+        Q_UNUSED(result);
+        clearSearchHighlights();  // 对话框关闭时清除高亮
+    });
+}
+
+void MainWindow::performSearch()
+{
+    QString searchText = searchEdit->text().trimmed();
+    
+    // 即使搜索内容为空也清除之前的高亮
+    clearSearchHighlights();
+    
+    if (searchText.isEmpty()) {
+        return;
+    }
+    
+    QString field = searchFieldCombo->currentText();
+    int column = -1;
+    
+    if (field == "序列号") column = 0;
+    else if (field == "激活码") column = 9;
+    else if (field == "项目号") column = 10;
+    else if (field == "机箱序列号") column = 11;
+    
+    if (column == -1) return;
+    
+    // 重新搜索前清空结果
+    searchResults.clear();
+    currentSearchIndex = -1;
+    
+    // 执行搜索（包括主行和子行）
+    for (int i = 0; i < serialModel->rowCount(); ++i) {
+        QStandardItem *parentItem = serialModel->item(i);
+        
+        // 搜索主行
+        if (column < 9) {
+            QStandardItem *item = serialModel->item(i, column);
+            if (item && item->text().contains(searchText, Qt::CaseInsensitive)) {
+                searchResults.append(serialModel->index(i, column));
+            }
+        }
+        
+        // 搜索子行
+        for (int j = 0; j < parentItem->rowCount(); ++j) {
+            if (column >= 9) {
+                QStandardItem *childItem = parentItem->child(j, column-9);
+                if (childItem && childItem->text().contains(searchText, Qt::CaseInsensitive)) {
+                    searchResults.append(childItem->index());
+                }
+            }
+        }
+    }
+    
+    if (!searchResults.isEmpty()) {
+        currentSearchIndex = 0;
+        highlightSearchResult(currentSearchIndex);
+    }
+}
+
+void MainWindow::highlightSearchResult(int index)
+{
+    if (index < 0 || index >= searchResults.size()) {
+        return;
+    }
+    
+    // 清除所有高亮
+    clearSearchHighlights();
+    
+    // 设置新的高亮
+    QModelIndex resultIndex = searchResults[index];
+    QStandardItem *item = serialModel->itemFromIndex(resultIndex);
+    if (item) {
+        item->setBackground(Qt::yellow);
+        
+        // 确保该项可见
+        serialTableView->scrollTo(resultIndex);
+        serialTableView->selectionModel()->select(resultIndex, QItemSelectionModel::SelectCurrent);
+        
+        // 如果是子项，展开父项
+        if (resultIndex.parent().isValid()) {
+            serialTableView->expand(resultIndex.parent());
+        }
+    }
+}
+
+void MainWindow::findNext()
+{
+    if (searchResults.isEmpty()) {
+        performSearch();
+        return;
+    }
+    
+    currentSearchIndex = (currentSearchIndex + 1) % searchResults.size();
+    highlightSearchResult(currentSearchIndex);
+}
+
+void MainWindow::findPrev()
+{
+    if (searchResults.isEmpty()) {
+        performSearch();
+        return;
+    }
+    
+    currentSearchIndex = (currentSearchIndex - 1 + searchResults.size()) % searchResults.size();
+    highlightSearchResult(currentSearchIndex);
+}
+
+void MainWindow::clearSearchHighlights()
+{
+    /// 只清除实际有高亮的部分，提高性能
+    for (const QModelIndex &index : searchResults) {
+        QStandardItem *item = serialModel->itemFromIndex(index);
+        if (item) {
+            item->setBackground(QBrush());
         }
     }
 }
@@ -520,67 +694,7 @@ void MainWindow::addActivationInfo()
     loadSerialNumbers();
     loadActivationInfo();}
 
-#if 0
-void MainWindow::addActivationInfo()
-{
-    QModelIndex index = serialTableView->currentIndex();
-    if (!index.isValid()) return;
 
-    // 确保选中的是顶层主行（不是子项）
-    if (index.parent().isValid()) {
-        QMessageBox::warning(this, "提示", "请选择主行添加激活信息");
-        return;
-    }
-
-    QStandardItem *parentItem = serialModel->itemFromIndex(index);
-    if (!parentItem) return;
-
-    QString serialNumber = serialModel->item(index.row(), 0)->text();
-    activationDialog = new ActivationDialog(serialNumber, this);
-
-    if (activationDialog->exec() == QDialog::Accepted) {
-        // 1. 数据库插入（保持不变）
-        QSqlQuery query;
-        query.prepare("INSERT INTO activation_info (serial_number, activation_code, project_number, chassis_number) "
-                    "VALUES (?, ?, ?, ?)");
-        query.addBindValue(serialNumber);
-        query.addBindValue(activationDialog->getActivationCode());
-        query.addBindValue(activationDialog->getProjectNumber());
-        query.addBindValue(activationDialog->getChassisNumber());
-        
-        if (!query.exec()) {
-            QMessageBox::critical(this, "错误", "添加激活信息失败: " + query.lastError().text());
-            return;
-        }
-
-        // 2. 添加子项（关键修改：列数与主模型保持一致，共9列）
-        QList<QStandardItem*> childItems;
-        for (int i = 0; i < 9; ++i) {
-            childItems << new QStandardItem("");  // 空值填充，确保列数一致
-        }
-        // 前3列：激活信息（对应主模型的列0-2，内容自定义）
-        childItems << new QStandardItem(activationDialog->getActivationCode());  // 列0
-        childItems << new QStandardItem(activationDialog->getProjectNumber());   // 列1
-        childItems << new QStandardItem(activationDialog->getChassisNumber());   // 列2        
-
-        // 添加子项到主行
-        parentItem->appendRow(childItems);
-        // 自动展开主行
-        serialTableView->expand(index);
-
-        // 3. 更新剩余激活次数（保持不变）
-        int remaining = serialModel->item(index.row(), 2)->text().toInt() - 1;
-        serialModel->item(index.row(), 2)->setText(QString::number(remaining));
-        
-        QSqlQuery updateQuery;
-        updateQuery.prepare("UPDATE serial_numbers SET remaining_activations = ? WHERE serial_number = ?");
-        updateQuery.addBindValue(remaining);
-        updateQuery.addBindValue(serialNumber);
-        updateQuery.exec();
-    }
-    delete activationDialog;
-}
-#endif
 void MainWindow::deleteSerialNumber()
 {
     if (!verifyPassword()) {

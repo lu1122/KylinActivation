@@ -18,7 +18,7 @@
 #include <QMessageBox>
 #include <QInputDialog>
 #include <QHeaderView>
-
+#include <QShortcut>
 class ActivationDialog;
 
 class MainWindow : public QMainWindow
@@ -84,6 +84,24 @@ private:
 
     // 数据库
     QSqlDatabase db;
+
+    // 添加搜索相关成员
+    QShortcut *searchShortcut;
+    QDialog *searchDialog;
+    QLineEdit *searchEdit;
+    QPushButton *searchNextButton;
+    QPushButton *searchPrevButton;
+    QComboBox *searchFieldCombo;
+    QList<QModelIndex> searchResults;
+    int currentSearchIndex;
+
+    // 添加搜索方法
+    void setupSearchDialog();
+    void performSearch();
+    void highlightSearchResult(int index);
+    void findNext();
+    void findPrev();
+    void clearSearchHighlights();
 
     // 方法
     bool initDatabase();
