@@ -19,7 +19,16 @@
 #include <QInputDialog>
 #include <QHeaderView>
 #include <QShortcut>
+#include <QTextStream>
+
 class ActivationDialog;
+
+struct CSVData {
+    QString serialNumber;//序列号
+    int totalActivations = 0;//总激活次数
+    int remainingActivations = 0;//剩余激活次数
+    QVector<QPair<QString, QString>> activationCodes;//激活码
+};
 
 class MainWindow : public QMainWindow
 {
@@ -44,8 +53,9 @@ private slots:
     void deleteSerialNumber();
     void downloadLicense();
     void downloadKyinfo();
-
+    void importFromCSV();
 private:
+
     // UI 组件
     QWidget *centralWidget;
     QVBoxLayout *mainLayout;
@@ -117,6 +127,11 @@ private:
     void setupUI();
     void setupSerialForm();
     void setupSerialTable();
+
+    //Excel数据
+    CSVData parseCSVFile(const QString &filePath);
+    bool addDataToSystem(const CSVData &data);
+    bool isSerialNumberExists(const QString &serialNumber);
 };
 
 #endif // MAINWINDOW_H

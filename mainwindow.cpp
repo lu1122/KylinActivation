@@ -57,6 +57,11 @@ void MainWindow::setupUI()
         searchDialog->show();
         searchEdit->setFocus();
     });
+
+    // 添加导入按钮
+    QPushButton *importButton = new QPushButton("从CSV导入", this);
+    mainLayout->addWidget(importButton);
+    connect(importButton, &QPushButton::clicked, this, &MainWindow::importFromCSV);
 }
 
 void MainWindow::setupSerialForm()
@@ -413,6 +418,11 @@ void MainWindow::clearSearchHighlights()
 void MainWindow::addSerialNumber()
 {
     QString serialNumber = serialNumberEdit->text().trimmed();
+    // 检查序列号是否已存在
+    if (isSerialNumberExists(serialNumber)) {
+        QMessageBox::warning(this, "警告", "该序列号已存在！");
+        return;
+    }
     QString totalActivations = totalActivationsEdit->text().trimmed();
     QString remainingActivations = remainingActivationsEdit->text().trimmed();
     QString platform = platformComboBox->currentText();
@@ -984,4 +994,284 @@ void MainWindow::updateActivationInfoInDatabase(const QString &serialNumber, con
     query.addBindValue(serialNumber);
     query.addBindValue(activationCode);
     query.exec();
+}
+
+CSVData MainWindow::parseCSVFile(const QString &filePath) {
+    CSVData data;
+    QFile file(filePath);
+    
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qDebug() << "无法打开CSV文件:" << file.errorString();
+        return data;
+    }
+
+    QTextStream in(&file);
+    bool isHeader = true;
+    bool isMainData = false;
+    bool isActivationData = false;
+
+    while (!in.atEnd()) {
+        QString line = in.readLine().trimmed();
+        
+        if (line.isEmpty()) continue;
+        
+        if (line.contains("激活数据表")) {
+            isMainData = true;
+            continue;
+        }
+        
+        if (line.contains("注册码,激活码")) {
+            isHeader = false;
+            isActivationData = true;
+            continue;
+        }
+        
+        if (isMainData && !isActivationData) {
+            // 处理主数据行，需要更智能的解析方式
+            if (line.contains("服务序列号")) {
+                // 示例行: "服务序列号,63261116,授权总数,6,"
+                QStringList parts = line.split(",");
+                for (int i = 0; i < parts.size(); i++) {
+                    if (parts[i].contains("服务序列号") && (i+1) < parts.size()) {
+                        data.serialNumber = parts[i+1].trimmed();
+                    }
+                    if (parts[i].contains("授权总数") && (i+1) < parts.size()) {
+                        data.totalActivations = parts[i+1].toInt();
+                    }
+                }
+            }
+            else if (line.contains("可分配/可取消")) {
+                // 示例行: "激活方式,扫码,可分配/可取消,2/0,"
+                QStringList parts = line.split(",");
+                for (int i = 0; i < parts.size(); i++) {
+                    if (parts[i].contains("可分配/可取消") && (i+1) < parts.size()) {
+                        QStringList allocParts = parts[i+1].split("/");
+                        if (allocParts.size() >= 1) {
+                            data.remainingActivations = allocParts[0].toInt();
+                            qDebug() << "可分配数量:" << data.remainingActivations;
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (isActivationData && !isHeader) {
+            // 处理激活码数据行
+            QStringList parts = line.split(",");
+            if (parts.size() >= 2) {
+                QString regCode = parts[0].trimmed();
+                QString actCode = parts[1].trimmed();
+                if (!regCode.isEmpty() && !actCode.isEmpty()) {
+                    data.activationCodes.append(qMakePair(regCode, actCode));
+                }
+            }
+        }
+    }
+    
+    file.close();
+    
+    qDebug() << "解析结果:";
+    qDebug() << "服务序列号:" << data.serialNumber;
+    qDebug() << "授权总数:" << data.totalActivations;
+    qDebug() << "可分配数量:" << data.remainingActivations;
+    qDebug() << "激活码数量:" << data.activationCodes.size();
+    
+    return data;
+}
+
+#if 0
+CSVData MainWindow::parseCSVFile(const QString &filePath) {
+    CSVData data;
+    QFile file(filePath);
+    
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qDebug() << "无法打开CSV文件:" << file.errorString();
+        return data;
+    }
+
+    QTextStream in(&file);
+    bool isHeader = true;
+    bool isMainData = false;
+    bool isActivationData = false;
+
+    while (!in.atEnd()) {
+        QString line = in.readLine().trimmed();
+        
+        if (line.isEmpty()) continue;
+        
+        if (line.contains("激活数据表")) {
+            isMainData = true;
+            continue;
+        }
+        
+        if (line.contains("注册码,激活码")) {
+            isHeader = false;
+            isActivationData = true;
+            continue;
+        }
+        
+        if (isMainData && !isActivationData) {
+            QStringList parts = line.split(",");
+            if (parts.size() >= 4) {
+                if (parts[0].contains("服务序列号")) {
+                    data.serialNumber = parts[1].trimmed();
+                } else if (parts[0].contains("授权总数")) {
+                    data.totalActivations = parts[1].toInt();
+                } else if (parts[0].contains("可分配/可取消")) {
+                    QStringList allocParts = parts[1].split("/");
+                    if (allocParts.size() >= 1) {
+                        data.remainingActivations = allocParts[0].toInt();
+                        qDebug()<<data.remainingActivations;
+                    }
+                }
+            }
+        }
+        
+        if (isActivationData && !isHeader) {
+            QStringList parts = line.split(",");
+            if (parts.size() >= 3) {
+                QString regCode = parts[0].trimmed();
+                QString actCode = parts[1].trimmed();
+                if (!regCode.isEmpty() && !actCode.isEmpty()) {
+                    data.activationCodes.append(qMakePair(regCode, actCode));
+                }
+            }
+        }
+    }
+    
+    file.close();
+    return data;
+}
+#endif
+bool MainWindow::addDataToSystem(const CSVData &data)
+{
+    // 检查序列号是否已存在
+    if (isSerialNumberExists(data.serialNumber)) {
+        QMessageBox::warning(this, "警告", 
+            QString("序列号 %1 已存在，跳过导入").arg(data.serialNumber));
+        return false;
+    }
+    
+    // 开始事务
+    QSqlDatabase::database().transaction();
+    
+    try {
+        // 1. 插入主行数据到数据库
+        QSqlQuery mainQuery;
+        mainQuery.prepare(
+            "INSERT INTO serial_numbers "
+            "(serial_number, total_activations, remaining_activations, "
+            "platform, bind_wechat, bind_person) "
+            "VALUES (?, ?, ?, '?', '是', 'Excel导入')");
+        
+        mainQuery.addBindValue(data.serialNumber);
+        mainQuery.addBindValue(data.totalActivations);
+        mainQuery.addBindValue(data.remainingActivations);
+        
+        if (!mainQuery.exec()) {
+            throw std::runtime_error(
+                QString("插入序列号失败: %1").arg(mainQuery.lastError().text()).toStdString());
+        }
+        
+        // 2. 插入激活码到数据库
+        for (const auto &codePair : data.activationCodes) {
+            QSqlQuery codeQuery;
+            codeQuery.prepare(
+                "INSERT INTO activation_info "
+                "(serial_number, activation_code) "
+                "VALUES (?, ?)");
+            codeQuery.addBindValue(data.serialNumber);
+            codeQuery.addBindValue(codePair.second); // 使用激活码
+            
+            if (!codeQuery.exec()) {
+                qDebug() << "激活码插入失败:" << codeQuery.lastError();
+                // 继续插入其他激活码
+            }
+        }
+        
+        // 3. 更新UI
+        QList<QStandardItem*> mainRow;
+        mainRow << new QStandardItem(data.serialNumber);
+        mainRow << new QStandardItem(QString::number(data.totalActivations));
+        mainRow << new QStandardItem(QString::number(data.remainingActivations));
+        mainRow << new QStandardItem("");
+        mainRow << new QStandardItem(""); // 验证码
+        mainRow << new QStandardItem("无"); // LICENSE
+        mainRow << new QStandardItem("无"); // .kyinfo
+        mainRow << new QStandardItem("是"); // 绑定微信
+        mainRow << new QStandardItem("Excel导入"); // 绑定人
+        
+        QStandardItem *parentItem = mainRow.first();
+        serialModel->appendRow(mainRow);
+        
+        // 添加子行（激活码）
+        for (const auto &codePair : data.activationCodes) {
+            QList<QStandardItem*> childRow;
+            // 前9列留空（与主行对应）
+            for (int i = 0; i < 9; ++i) {
+                childRow << new QStandardItem("");
+            }
+            // 激活码在第9列
+            childRow << new QStandardItem(codePair.second);
+            parentItem->appendRow(childRow);
+        }
+        
+        // 展开显示
+        serialTableView->expand(parentItem->index());
+        
+        // 提交事务
+        if (!QSqlDatabase::database().commit()) {
+            throw std::runtime_error("提交事务失败");
+        }
+        
+        return true;
+        
+    } catch (const std::exception &e) {
+        QSqlDatabase::database().rollback();
+        QMessageBox::critical(this, "错误", QString::fromStdString(e.what()));
+        return false;
+    }
+}
+
+void MainWindow::importFromCSV() {
+    QString filePath = QFileDialog::getOpenFileName(
+        this, "选择CSV文件", "", "CSV文件 (*.csv)");
+    
+    if (filePath.isEmpty()) return;
+    
+    // 解析CSV文件
+    CSVData data = parseCSVFile(filePath);
+    
+    if (data.serialNumber.isEmpty()) {
+        QMessageBox::warning(this, "警告", "CSV文件格式不正确或没有有效数据");
+        return;
+    }
+    
+    // 添加到系统
+    if (addDataToSystem(data)) {
+        QMessageBox::information(this, "成功", 
+            QString("成功导入序列号 %1\n包含 %2 个激活码")
+                .arg(data.serialNumber)
+                .arg(data.activationCodes.size()));
+    }
+}
+
+bool MainWindow::isSerialNumberExists(const QString &serialNumber)
+{
+    // 检查界面中是否存在
+    for (int i = 0; i < serialModel->rowCount(); ++i) {
+        if (serialModel->item(i, 0)->text() == serialNumber) {
+            return true;
+        }
+    }
+    
+    // 检查数据库中是否存在
+    QSqlQuery query;
+    query.prepare("SELECT COUNT(*) FROM serial_numbers WHERE serial_number = ?");
+    query.addBindValue(serialNumber);
+    if (query.exec() && query.next()) {
+        return query.value(0).toInt() > 0;
+    }
+    
+    return false;
 }
