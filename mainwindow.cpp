@@ -42,10 +42,10 @@ void MainWindow::setupUI()
 {
     centralWidget = new QWidget(this);
     mainLayout = new QVBoxLayout(centralWidget);
-    
+
     setupSerialForm();
     setupSerialTable();
-    
+
     setCentralWidget(centralWidget);
     resize(1000, 600);
     setWindowTitle("银河麒麟激活码管理平台");
@@ -68,7 +68,7 @@ void MainWindow::setupSerialForm()
 {
     addSerialGroup = new QGroupBox("添加序列号", centralWidget);
     serialFormLayout = new QGridLayout(addSerialGroup);
-    
+
     // 第一行
     serialNumberLabel = new QLabel("序列号:", addSerialGroup);
     serialNumberEdit = new QLineEdit(addSerialGroup);
@@ -76,14 +76,14 @@ void MainWindow::setupSerialForm()
     totalActivationsEdit = new QLineEdit(addSerialGroup);
     remainingActivationsLabel = new QLabel("剩余次数:", addSerialGroup);
     remainingActivationsEdit = new QLineEdit(addSerialGroup);
-    
+
     serialFormLayout->addWidget(serialNumberLabel, 0, 0);
     serialFormLayout->addWidget(serialNumberEdit, 0, 1);
     serialFormLayout->addWidget(totalActivationsLabel, 0, 2);
     serialFormLayout->addWidget(totalActivationsEdit, 0, 3);
     serialFormLayout->addWidget(remainingActivationsLabel, 0, 4);
     serialFormLayout->addWidget(remainingActivationsEdit, 0, 5);
-    
+
     // 第二行
     platformLabel = new QLabel("硬件平台:", addSerialGroup);
     platformComboBox = new QComboBox(addSerialGroup);
@@ -91,12 +91,12 @@ void MainWindow::setupSerialForm()
     verificationCodeLabel = new QLabel("验证码:", addSerialGroup);
     verificationCodeEdit = new QLineEdit(addSerialGroup);
     verificationCodeEdit->setEnabled(false);
-    
+
     serialFormLayout->addWidget(platformLabel, 1, 0);
     serialFormLayout->addWidget(platformComboBox, 1, 1);
     serialFormLayout->addWidget(verificationCodeLabel, 1, 2);
     serialFormLayout->addWidget(verificationCodeEdit, 1, 3);
-    
+
     // 第三行
     licenseFileLabel = new QLabel("LICENSE文件:", addSerialGroup);
     uploadLicenseButton = new QPushButton("上传", addSerialGroup);
@@ -104,14 +104,14 @@ void MainWindow::setupSerialForm()
     kyinfoFileLabel = new QLabel(".kyinfo文件:", addSerialGroup);
     uploadKyinfoButton = new QPushButton("上传", addSerialGroup);
     kyinfoFilePathLabel = new QLabel("未选择文件", addSerialGroup);
-    
+
     serialFormLayout->addWidget(licenseFileLabel, 2, 0);
     serialFormLayout->addWidget(uploadLicenseButton, 2, 1);
     serialFormLayout->addWidget(licenseFilePathLabel, 2, 2, 1, 2);
     serialFormLayout->addWidget(kyinfoFileLabel, 2, 4);
     serialFormLayout->addWidget(uploadKyinfoButton, 2, 5);
     serialFormLayout->addWidget(kyinfoFilePathLabel, 2, 6, 1, 2);
-    
+
     // 第四行
     bindWechatLabel = new QLabel("绑定微信:", addSerialGroup);
     bindWechatComboBox = new QComboBox(addSerialGroup);
@@ -119,18 +119,18 @@ void MainWindow::setupSerialForm()
     bindPersonLabel = new QLabel("绑定人:", addSerialGroup);
     bindPersonEdit = new QLineEdit(addSerialGroup);
     bindPersonEdit->setEnabled(true);
-    
+
     serialFormLayout->addWidget(bindWechatLabel, 3, 0);
     serialFormLayout->addWidget(bindWechatComboBox, 3, 1);
     serialFormLayout->addWidget(bindPersonLabel, 3, 2);
     serialFormLayout->addWidget(bindPersonEdit, 3, 3);
-    
+
     // 添加按钮
     addButton = new QPushButton("添加", addSerialGroup);
     serialFormLayout->addWidget(addButton, 4, 0, 1, 8);
-    
+
     mainLayout->addWidget(addSerialGroup);
-    
+
     // 连接信号槽
     connect(platformComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::platformChanged);
     connect(bindWechatComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::bindWechatChanged);
@@ -143,18 +143,18 @@ void MainWindow::setupSerialTable()
 {
     serialTableGroup = new QGroupBox("序列号列表", centralWidget);
     serialTableLayout = new QVBoxLayout(serialTableGroup);
-    
+
     serialTableView = new QTreeView(serialTableGroup);
     serialModel = new QStandardItemModel(this);
-    serialModel->setHorizontalHeaderLabels({"序列号", "总激活次数", "剩余次数", "硬件平台", 
+    serialModel->setHorizontalHeaderLabels({"序列号", "总激活次数", "剩余次数", "硬件平台",
                                           "验证码", "LICENSE", ".kyinfo", "绑定微信", "绑定人", "激活码", "项目号", "机箱序列号"});
     serialTableView->setModel(serialModel);
 //    serialTableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     serialTableView->setContextMenuPolicy(Qt::CustomContextMenu);
-    
+
     serialTableLayout->addWidget(serialTableView);
     mainLayout->addWidget(serialTableGroup);
-    
+
     // 连接信号槽
     connect(serialTableView, &QTreeView::customContextMenuRequested, this, &MainWindow::showSerialContextMenu);
     // 禁用双击编辑
@@ -215,7 +215,7 @@ void MainWindow::loadSerialNumbers()
         items << new QStandardItem(query.value("kyinfo_file").isNull() ? "无" : "有");
         items << new QStandardItem(query.value("bind_wechat").toString());
         items << new QStandardItem(query.value("bind_person").toString());
-        
+
         serialModel->appendRow(items);
     }
 }
@@ -249,7 +249,7 @@ void MainWindow::loadActivationInfo()
             childItems << new QStandardItem(activationCode);    // 列0
             childItems << new QStandardItem(projectNumber);     // 列1
             childItems << new QStandardItem(chassisNumber);     // 列2
-            
+
             // 添加到主行下
             parentItem->appendRow(childItems);
         }
@@ -261,9 +261,9 @@ void MainWindow::setupSearchDialog()
     searchDialog = new QDialog(this);
     searchDialog->setWindowTitle("搜索");
     searchDialog->setModal(false);
-    
+
     QVBoxLayout *layout = new QVBoxLayout(searchDialog);
-    
+
     // 搜索字段选择
     QHBoxLayout *fieldLayout = new QHBoxLayout();
     QLabel *fieldLabel = new QLabel("搜索字段:", searchDialog);
@@ -271,10 +271,10 @@ void MainWindow::setupSearchDialog()
     searchFieldCombo->addItems({"序列号", "激活码", "项目号", "机箱序列号"});
     fieldLayout->addWidget(fieldLabel);
     fieldLayout->addWidget(searchFieldCombo);
-    
+
     // 搜索输入框
     searchEdit = new QLineEdit(searchDialog);
-    
+
     // 按钮
     QHBoxLayout *buttonLayout = new QHBoxLayout();
     searchNextButton = new QPushButton("下一个", searchDialog);
@@ -283,11 +283,11 @@ void MainWindow::setupSearchDialog()
     buttonLayout->addWidget(searchPrevButton);
     buttonLayout->addWidget(searchNextButton);
     // buttonLayout->addWidget(closeButton);
-    
+
     layout->addLayout(fieldLayout);
     layout->addWidget(searchEdit);
     layout->addLayout(buttonLayout);
-    
+
     // 添加文本变化实时搜索
     connect(searchEdit, &QLineEdit::textChanged, this, &MainWindow::performSearch);
     // 连接信号槽
@@ -305,32 +305,32 @@ void MainWindow::setupSearchDialog()
 void MainWindow::performSearch()
 {
     QString searchText = searchEdit->text().trimmed();
-    
+
     // 即使搜索内容为空也清除之前的高亮
     clearSearchHighlights();
-    
+
     if (searchText.isEmpty()) {
         return;
     }
-    
+
     QString field = searchFieldCombo->currentText();
     int column = -1;
-    
+
     if (field == "序列号") column = 0;
     else if (field == "激活码") column = 9;
     else if (field == "项目号") column = 10;
     else if (field == "机箱序列号") column = 11;
-    
+
     if (column == -1) return;
-    
+
     // 重新搜索前清空结果
     searchResults.clear();
     currentSearchIndex = -1;
-    
+
     // 执行搜索（包括主行和子行）
     for (int i = 0; i < serialModel->rowCount(); ++i) {
         QStandardItem *parentItem = serialModel->item(i);
-        
+
         // 搜索主行
         if (column < 9) {
             QStandardItem *item = serialModel->item(i, column);
@@ -338,7 +338,7 @@ void MainWindow::performSearch()
                 searchResults.append(serialModel->index(i, column));
             }
         }
-        
+
         // 搜索子行
         for (int j = 0; j < parentItem->rowCount(); ++j) {
             if (column >= 9) {
@@ -349,7 +349,7 @@ void MainWindow::performSearch()
             }
         }
     }
-    
+
     if (!searchResults.isEmpty()) {
         currentSearchIndex = 0;
         highlightSearchResult(currentSearchIndex);
@@ -361,20 +361,20 @@ void MainWindow::highlightSearchResult(int index)
     if (index < 0 || index >= searchResults.size()) {
         return;
     }
-    
+
     // 清除所有高亮
     clearSearchHighlights();
-    
+
     // 设置新的高亮
     QModelIndex resultIndex = searchResults[index];
     QStandardItem *item = serialModel->itemFromIndex(resultIndex);
     if (item) {
         item->setBackground(Qt::yellow);
-        
+
         // 确保该项可见
         serialTableView->scrollTo(resultIndex);
         serialTableView->selectionModel()->select(resultIndex, QItemSelectionModel::SelectCurrent);
-        
+
         // 如果是子项，展开父项
         if (resultIndex.parent().isValid()) {
             serialTableView->expand(resultIndex.parent());
@@ -388,7 +388,7 @@ void MainWindow::findNext()
         performSearch();
         return;
     }
-    
+
     currentSearchIndex = (currentSearchIndex + 1) % searchResults.size();
     highlightSearchResult(currentSearchIndex);
 }
@@ -399,7 +399,7 @@ void MainWindow::findPrev()
         performSearch();
         return;
     }
-    
+
     currentSearchIndex = (currentSearchIndex - 1 + searchResults.size()) % searchResults.size();
     highlightSearchResult(currentSearchIndex);
 }
@@ -459,13 +459,13 @@ void MainWindow::addSerialNumber()
     query.prepare("INSERT INTO serial_numbers (serial_number, total_activations, remaining_activations, "
                  "platform, verification_code, license_file, kyinfo_file, bind_wechat, bind_person) "
                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    
+
     query.addBindValue(serialNumber);
     query.addBindValue(totalActivations.toInt());
     query.addBindValue(remainingActivations.toInt());
     query.addBindValue(platform);
     query.addBindValue(verificationCode);
-    
+
     // 处理LICENSE文件
     QByteArray licenseData;
     if (platform == "银河麒麟" && licenseFilePathLabel->text() != "未选择文件") {
@@ -476,7 +476,7 @@ void MainWindow::addSerialNumber()
         }
     }
     query.addBindValue(licenseData);
-    
+
     // 处理.kyinfo文件
     QByteArray kyinfoData;
     if (platform == "银河麒麟" && kyinfoFilePathLabel->text() != "未选择文件") {
@@ -487,7 +487,7 @@ void MainWindow::addSerialNumber()
         }
     }
     query.addBindValue(kyinfoData);
-    
+
     query.addBindValue(bindWechat);
     query.addBindValue(bindPerson);
 
@@ -507,7 +507,7 @@ void MainWindow::addSerialNumber()
     items << new QStandardItem(kyinfoData.isEmpty() ? "无" : "有");
     items << new QStandardItem(bindWechat);
     items << new QStandardItem(bindPerson);
-    
+
     serialModel->appendRow(items);
 
     // 清空输入
@@ -523,11 +523,11 @@ void MainWindow::addSerialNumber()
 void MainWindow::platformChanged(int index)
 {
     bool isKylin = (platformComboBox->currentText() == "银河麒麟");
-    
+
     verificationCodeEdit->setEnabled(!isKylin);
     uploadLicenseButton->setEnabled(isKylin);
     uploadKyinfoButton->setEnabled(isKylin);
-    
+
     if (!isKylin) {
         licenseFilePathLabel->setText("未选择文件");
         kyinfoFilePathLabel->setText("未选择文件");
@@ -610,7 +610,7 @@ void MainWindow::modifyChildItem()
     if (!index.isValid() || !index.parent().isValid()) return;
 
     bool ok;
-    QString newValue = QInputDialog::getText(this, "修改子项", "输入新值:", 
+    QString newValue = QInputDialog::getText(this, "修改子项", "输入新值:",
                                           QLineEdit::Normal, index.data().toString(), &ok);
     if (ok && !newValue.isEmpty()) {
         serialModel->itemFromIndex(index)->setText(newValue);
@@ -624,7 +624,7 @@ void MainWindow::deleteChildItem(const QModelIndex &index)
     if (!verifyPassword()) {
         return;
     }
-    
+
     if (!index.isValid() || !index.parent().isValid()) {
         qDebug() << "无效的索引或不是子项";
         return;
@@ -638,7 +638,7 @@ void MainWindow::deleteChildItem(const QModelIndex &index)
     }
 
     QString serialNumber = parentItem->text();
-    
+
     // 获取子项的激活码（假设激活码在第9列，根据实际调整）
     QStandardItem *childItem = serialModel->itemFromIndex(index.sibling(index.row(), 9));
     if (!childItem) {
@@ -656,7 +656,7 @@ void MainWindow::deleteChildItem(const QModelIndex &index)
         deleteQuery.prepare("DELETE FROM activation_info WHERE serial_number = ? AND activation_code = ?");
         deleteQuery.addBindValue(serialNumber);
         deleteQuery.addBindValue(activationCode);
-        
+
         if (!deleteQuery.exec()) {
             throw std::runtime_error("删除激活信息失败: " + deleteQuery.lastError().text().toStdString());
         }
@@ -664,12 +664,12 @@ void MainWindow::deleteChildItem(const QModelIndex &index)
         // 2. 更新主行的剩余激活次数（+1）
         int remaining = serialModel->item(index.parent().row(), 2)->text().toInt() + 1;
         serialModel->item(index.parent().row(), 2)->setText(QString::number(remaining));
-        
+
         QSqlQuery updateQuery;
         updateQuery.prepare("UPDATE serial_numbers SET remaining_activations = ? WHERE serial_number = ?");
         updateQuery.addBindValue(remaining);
         updateQuery.addBindValue(serialNumber);
-        
+
         if (!updateQuery.exec()) {
             throw std::runtime_error("更新剩余激活次数失败: " + updateQuery.lastError().text().toStdString());
         }
@@ -698,14 +698,14 @@ void MainWindow::updateChildItemInDatabase(const QModelIndex &index)
     QString serialNumber = serialModel->itemFromIndex(index.parent())->text();
     QString oldActivationCode = serialModel->itemFromIndex(index.sibling(index.row(), 0))->text();
     QString columnName;
-    
+
     switch (index.column()) {
     case 0: columnName = "activation_code"; break;
     case 1: columnName = "project_number"; break;
     case 2: columnName = "chassis_number"; break;
     default: return;
     }
-    
+
     QSqlQuery query;
     query.prepare(QString("UPDATE activation_info SET %1 = ? WHERE serial_number = ? AND activation_code = ?")
                  .arg(columnName));
@@ -725,7 +725,7 @@ void MainWindow::modifySerialNumber()
     if (!index.isValid()) return;
 
     bool ok;
-    QString newValue = QInputDialog::getText(this, "修改", "输入新值:", QLineEdit::Normal, 
+    QString newValue = QInputDialog::getText(this, "修改", "输入新值:", QLineEdit::Normal,
                                            index.data().toString(), &ok);
     if (ok && !newValue.isEmpty()) {
         serialModel->itemFromIndex(index)->setText(newValue);
@@ -768,7 +768,7 @@ void MainWindow::addActivationInfo()
         query.addBindValue(activationDialog->getActivationCode());
         query.addBindValue(activationDialog->getProjectNumber());
         query.addBindValue(activationDialog->getChassisNumber());
-        
+
         if (!query.exec()) {
             QSqlDatabase::database().rollback();
             QMessageBox::critical(this, "错误", "添加激活信息失败: " + query.lastError().text());
@@ -783,7 +783,7 @@ void MainWindow::addActivationInfo()
         childItems << new QStandardItem(activationDialog->getActivationCode());  // 列1
         childItems << new QStandardItem(activationDialog->getProjectNumber());   // 列2
         childItems << new QStandardItem(activationDialog->getChassisNumber());   // 列3
-        
+
         // 填充剩余列（4-8）为空
         for (int i = 4; i < 9; ++i) {
             childItems << new QStandardItem("");
@@ -796,12 +796,12 @@ void MainWindow::addActivationInfo()
         // 3. 更新剩余激活次数
         int remaining = serialModel->item(index.row(), 2)->text().toInt() - 1;
         serialModel->item(index.row(), 2)->setText(QString::number(remaining));
-        
+
         QSqlQuery updateQuery;
         updateQuery.prepare("UPDATE serial_numbers SET remaining_activations = ? WHERE serial_number = ?");
         updateQuery.addBindValue(remaining);
         updateQuery.addBindValue(serialNumber);
-        
+
         if (!updateQuery.exec()) {
             QSqlDatabase::database().rollback();
             QMessageBox::critical(this, "错误", "更新激活次数失败: " + updateQuery.lastError().text());
@@ -822,10 +822,10 @@ void MainWindow::addActivationInfo()
         serialTableView->expand(index);
         serialTableView->viewport()->update();
         serialModel->layoutChanged();  // 强制刷新模型
-        
+
         qDebug() << "激活信息添加成功，剩余激活次数:" << remaining;
     }
-    
+
     delete activationDialog;
     // 加载数据
     loadSerialNumbers();
@@ -845,7 +845,7 @@ void MainWindow::deleteSerialNumber()
 
     // 从数据库删除主行和所有关联的子行
     QSqlDatabase::database().transaction();
-    
+
     QSqlQuery query;
     query.prepare("DELETE FROM activation_info WHERE serial_number = ?");
     query.addBindValue(serialNumber);
@@ -854,7 +854,7 @@ void MainWindow::deleteSerialNumber()
         QMessageBox::critical(this, "错误", "删除关联激活信息失败: " + query.lastError().text());
         return;
     }
-    
+
     query.prepare("DELETE FROM serial_numbers WHERE serial_number = ?");
     query.addBindValue(serialNumber);
     if (!query.exec()) {
@@ -862,7 +862,7 @@ void MainWindow::deleteSerialNumber()
         QMessageBox::critical(this, "错误", "删除序列号失败: " + query.lastError().text());
         return;
     }
-    
+
     QSqlDatabase::database().commit();
 
     // 更新UI
@@ -875,19 +875,19 @@ void MainWindow::downloadLicense()
     if (!index.isValid()) return;
 
     QString serialNumber = serialModel->item(index.row(), 0)->text();
-    
+
     QSqlQuery query;
     query.prepare("SELECT license_file FROM serial_numbers WHERE serial_number = ?");
     query.addBindValue(serialNumber);
-    
+
     if (query.exec() && query.next()) {
         QByteArray fileData = query.value(0).toByteArray();
         if (fileData.isEmpty()) {
             QMessageBox::information(this, "提示", "没有LICENSE文件");
             return;
         }
-        
-        QString savePath = QFileDialog::getSaveFileName(this, "保存LICENSE文件", 
+
+        QString savePath = QFileDialog::getSaveFileName(this, "保存LICENSE文件",
                                                       serialNumber + ".license", "License Files (*.license)");
         if (!savePath.isEmpty()) {
             QFile file(savePath);
@@ -908,19 +908,19 @@ void MainWindow::downloadKyinfo()
     if (!index.isValid()) return;
 
     QString serialNumber = serialModel->item(index.row(), 0)->text();
-    
+
     QSqlQuery query;
     query.prepare("SELECT kyinfo_file FROM serial_numbers WHERE serial_number = ?");
     query.addBindValue(serialNumber);
-    
+
     if (query.exec() && query.next()) {
         QByteArray fileData = query.value(0).toByteArray();
         if (fileData.isEmpty()) {
             QMessageBox::information(this, "提示", "没有.kyinfo文件");
             return;
         }
-        
-        QString savePath = QFileDialog::getSaveFileName(this, "保存.kyinfo文件", 
+
+        QString savePath = QFileDialog::getSaveFileName(this, "保存.kyinfo文件",
                                                       serialNumber + ".kyinfo", "Kyinfo Files (*.kyinfo)");
         if (!savePath.isEmpty()) {
             QFile file(savePath);
@@ -938,15 +938,15 @@ void MainWindow::downloadKyinfo()
 bool MainWindow::verifyPassword()
 {
     bool ok;
-    QString password = QInputDialog::getText(this, "密码验证", "请输入密码:", 
+    QString password = QInputDialog::getText(this, "密码验证", "请输入密码:",
                                            QLineEdit::Password, "", &ok);
-    
+
     if (ok && password == "000000") {
         return true;
     } else if (ok) {
         QMessageBox::warning(this, "错误", "密码错误!");
     }
-    
+
     return false;
 }
 
@@ -954,7 +954,7 @@ void MainWindow::updateSerialNumberInDatabase(const QModelIndex &index)
 {
     QString serialNumber = serialModel->item(index.row(), 0)->text();
     QString columnName;
-    
+
     switch (index.column()) {
     case 0: columnName = "serial_number"; break;
     case 1: columnName = "total_activations"; break;
@@ -967,7 +967,7 @@ void MainWindow::updateSerialNumberInDatabase(const QModelIndex &index)
     case 8: columnName = "bind_person"; break;
     default: return;
     }
-    
+
     QSqlQuery query;
     query.prepare(QString("UPDATE serial_numbers SET %1 = ? WHERE serial_number = ?").arg(columnName));
     query.addBindValue(index.data().toString());
@@ -979,7 +979,7 @@ void MainWindow::updateActivationInfoInDatabase(const QString &serialNumber, con
 {
     int row = index.row();
     QString activationCode = activationModels[serialNumber]->item(row, 0)->text();
-    
+
     QString columnName;
     switch (index.column()) {
     case 0: columnName = "activation_code"; break;
@@ -987,7 +987,7 @@ void MainWindow::updateActivationInfoInDatabase(const QString &serialNumber, con
     case 2: columnName = "chassis_number"; break;
     default: return;
     }
-    
+
     QSqlQuery query;
     query.prepare(QString("UPDATE activation_info SET %1 = ? WHERE serial_number = ? AND activation_code = ?").arg(columnName));
     query.addBindValue(index.data().toString());
@@ -999,7 +999,7 @@ void MainWindow::updateActivationInfoInDatabase(const QString &serialNumber, con
 CSVData MainWindow::parseCSVFile(const QString &filePath) {
     CSVData data;
     QFile file(filePath);
-    
+
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         qDebug() << "无法打开CSV文件:" << file.errorString();
         return data;
@@ -1012,20 +1012,20 @@ CSVData MainWindow::parseCSVFile(const QString &filePath) {
 
     while (!in.atEnd()) {
         QString line = in.readLine().trimmed();
-        
+
         if (line.isEmpty()) continue;
-        
+
         if (line.contains("激活数据表")) {
             isMainData = true;
             continue;
         }
-        
+
         if (line.contains("注册码,激活码")) {
             isHeader = false;
             isActivationData = true;
             continue;
         }
-        
+
         if (isMainData && !isActivationData) {
             // 处理主数据行，需要更智能的解析方式
             if (line.contains("服务序列号")) {
@@ -1054,7 +1054,7 @@ CSVData MainWindow::parseCSVFile(const QString &filePath) {
                 }
             }
         }
-        
+
         if (isActivationData && !isHeader) {
             // 处理激活码数据行
             QStringList parts = line.split(",");
@@ -1067,94 +1067,30 @@ CSVData MainWindow::parseCSVFile(const QString &filePath) {
             }
         }
     }
-    
+
     file.close();
-    
-    qDebug() << "解析结果:";
-    qDebug() << "服务序列号:" << data.serialNumber;
-    qDebug() << "授权总数:" << data.totalActivations;
-    qDebug() << "可分配数量:" << data.remainingActivations;
-    qDebug() << "激活码数量:" << data.activationCodes.size();
-    
+
+    // qDebug() << "解析结果:";
+    // qDebug() << "服务序列号:" << data.serialNumber;
+    // qDebug() << "授权总数:" << data.totalActivations;
+    // qDebug() << "可分配数量:" << data.remainingActivations;
+    // qDebug() << "激活码数量:" << data.activationCodes.size();
+
     return data;
 }
 
-#if 0
-CSVData MainWindow::parseCSVFile(const QString &filePath) {
-    CSVData data;
-    QFile file(filePath);
-    
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        qDebug() << "无法打开CSV文件:" << file.errorString();
-        return data;
-    }
-
-    QTextStream in(&file);
-    bool isHeader = true;
-    bool isMainData = false;
-    bool isActivationData = false;
-
-    while (!in.atEnd()) {
-        QString line = in.readLine().trimmed();
-        
-        if (line.isEmpty()) continue;
-        
-        if (line.contains("激活数据表")) {
-            isMainData = true;
-            continue;
-        }
-        
-        if (line.contains("注册码,激活码")) {
-            isHeader = false;
-            isActivationData = true;
-            continue;
-        }
-        
-        if (isMainData && !isActivationData) {
-            QStringList parts = line.split(",");
-            if (parts.size() >= 4) {
-                if (parts[0].contains("服务序列号")) {
-                    data.serialNumber = parts[1].trimmed();
-                } else if (parts[0].contains("授权总数")) {
-                    data.totalActivations = parts[1].toInt();
-                } else if (parts[0].contains("可分配/可取消")) {
-                    QStringList allocParts = parts[1].split("/");
-                    if (allocParts.size() >= 1) {
-                        data.remainingActivations = allocParts[0].toInt();
-                        qDebug()<<data.remainingActivations;
-                    }
-                }
-            }
-        }
-        
-        if (isActivationData && !isHeader) {
-            QStringList parts = line.split(",");
-            if (parts.size() >= 3) {
-                QString regCode = parts[0].trimmed();
-                QString actCode = parts[1].trimmed();
-                if (!regCode.isEmpty() && !actCode.isEmpty()) {
-                    data.activationCodes.append(qMakePair(regCode, actCode));
-                }
-            }
-        }
-    }
-    
-    file.close();
-    return data;
-}
-#endif
 bool MainWindow::addDataToSystem(const CSVData &data)
 {
     // 检查序列号是否已存在
     if (isSerialNumberExists(data.serialNumber)) {
-        QMessageBox::warning(this, "警告", 
+        QMessageBox::warning(this, "警告",
             QString("序列号 %1 已存在，跳过导入").arg(data.serialNumber));
         return false;
     }
-    
+
     // 开始事务
     QSqlDatabase::database().transaction();
-    
+
     try {
         // 1. 插入主行数据到数据库
         QSqlQuery mainQuery;
@@ -1163,32 +1099,32 @@ bool MainWindow::addDataToSystem(const CSVData &data)
             "(serial_number, total_activations, remaining_activations, "
             "platform, bind_wechat, bind_person) "
             "VALUES (?, ?, ?, '?', '是', 'Excel导入')");
-        
+
         mainQuery.addBindValue(data.serialNumber);
         mainQuery.addBindValue(data.totalActivations);
         mainQuery.addBindValue(data.remainingActivations);
-        
+
         if (!mainQuery.exec()) {
             throw std::runtime_error(
                 QString("插入序列号失败: %1").arg(mainQuery.lastError().text()).toStdString());
         }
-        
+
         // 2. 插入激活码到数据库
         for (const auto &codePair : data.activationCodes) {
             QSqlQuery codeQuery;
             codeQuery.prepare(
-                "INSERT INTO activation_info "
-                "(serial_number, activation_code) "
-                "VALUES (?, ?)");
+                    "INSERT INTO activation_info "
+                    "(serial_number, activation_code, project_number, chassis_number) "  // 添加这两个字段
+                    "VALUES (?, ?, '', '')");  // 初始化为空字符串
             codeQuery.addBindValue(data.serialNumber);
             codeQuery.addBindValue(codePair.second); // 使用激活码
-            
+
             if (!codeQuery.exec()) {
                 qDebug() << "激活码插入失败:" << codeQuery.lastError();
                 // 继续插入其他激活码
             }
         }
-        
+
         // 3. 更新UI
         QList<QStandardItem*> mainRow;
         mainRow << new QStandardItem(data.serialNumber);
@@ -1200,10 +1136,10 @@ bool MainWindow::addDataToSystem(const CSVData &data)
         mainRow << new QStandardItem("无"); // .kyinfo
         mainRow << new QStandardItem("是"); // 绑定微信
         mainRow << new QStandardItem("Excel导入"); // 绑定人
-        
+
         QStandardItem *parentItem = mainRow.first();
         serialModel->appendRow(mainRow);
-        
+
         // 添加子行（激活码）
         for (const auto &codePair : data.activationCodes) {
             QList<QStandardItem*> childRow;
@@ -1213,19 +1149,23 @@ bool MainWindow::addDataToSystem(const CSVData &data)
             }
             // 激活码在第9列
             childRow << new QStandardItem(codePair.second);
+            // 添加空的第10列（项目号）
+            childRow << new QStandardItem("");
+            // 添加空的第11列（机箱序列号）
+            childRow << new QStandardItem("");
             parentItem->appendRow(childRow);
         }
-        
+
         // 展开显示
         serialTableView->expand(parentItem->index());
-        
+
         // 提交事务
         if (!QSqlDatabase::database().commit()) {
             throw std::runtime_error("提交事务失败");
         }
-        
+
         return true;
-        
+
     } catch (const std::exception &e) {
         QSqlDatabase::database().rollback();
         QMessageBox::critical(this, "错误", QString::fromStdString(e.what()));
@@ -1236,20 +1176,20 @@ bool MainWindow::addDataToSystem(const CSVData &data)
 void MainWindow::importFromCSV() {
     QString filePath = QFileDialog::getOpenFileName(
         this, "选择CSV文件", "", "CSV文件 (*.csv)");
-    
+
     if (filePath.isEmpty()) return;
-    
+
     // 解析CSV文件
     CSVData data = parseCSVFile(filePath);
-    
+
     if (data.serialNumber.isEmpty()) {
         QMessageBox::warning(this, "警告", "CSV文件格式不正确或没有有效数据");
         return;
     }
-    
+
     // 添加到系统
     if (addDataToSystem(data)) {
-        QMessageBox::information(this, "成功", 
+        QMessageBox::information(this, "成功",
             QString("成功导入序列号 %1\n包含 %2 个激活码")
                 .arg(data.serialNumber)
                 .arg(data.activationCodes.size()));
@@ -1264,7 +1204,7 @@ bool MainWindow::isSerialNumberExists(const QString &serialNumber)
             return true;
         }
     }
-    
+
     // 检查数据库中是否存在
     QSqlQuery query;
     query.prepare("SELECT COUNT(*) FROM serial_numbers WHERE serial_number = ?");
@@ -1272,6 +1212,6 @@ bool MainWindow::isSerialNumberExists(const QString &serialNumber)
     if (query.exec() && query.next()) {
         return query.value(0).toInt() > 0;
     }
-    
+
     return false;
 }
