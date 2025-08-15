@@ -1,5 +1,4 @@
 QT += core gui sql widgets
-
 TARGET = KylinActivationManager
 TEMPLATE = app
 

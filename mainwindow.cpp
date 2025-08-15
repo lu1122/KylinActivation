@@ -11,6 +11,7 @@
 #include <QTimer>
 #include <QSqlError>
 #include <QDebug>
+#include <QPluginLoader>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -163,6 +164,70 @@ void MainWindow::setupSerialTable()
 
 bool MainWindow::initDatabase()
 {
+    // MySQL连接
+    db = QSqlDatabase::addDatabase("QMYSQL");
+    db.setHostName("192.168.218.128");  // 改为你的服务器IP
+    db.setPort(3306);
+    db.setDatabaseName("kylin_activation");
+    db.setUserName("kylin_admin");
+    db.setPassword("StrongPassword123!");
+#if 0   //本地mysql数据库
+    db.setHostName("127.0.0.1");  // 改为你的服务器IP
+    db.setPort(3306);
+    db.setDatabaseName("mysql");
+    db.setUserName("root");
+    db.setPassword("qwer1234");
+#endif
+    // 设置连接选项
+    db.setConnectOptions("MYSQL_OPT_RECONNECT=1;MYSQL_OPT_CONNECT_TIMEOUT=3");
+    
+    if (!db.open()) {
+        QMessageBox::critical(nullptr, "数据库错误", 
+                            "无法连接数据库:\n" + db.lastError().text());
+        return false;
+    }
+    else{
+        qDebug()<< "成功连接数据库";
+    }
+    // 设置编码
+    QSqlQuery query;
+    if (!query.exec("SET NAMES 'utf8mb4'")) {
+        qDebug() << "设置编码失败:" << query.lastError();
+    }
+    
+    // 创建表（如果不存在）
+    if (!query.exec("CREATE TABLE IF NOT EXISTS serial_numbers ("
+                  "serial_number VARCHAR(50) PRIMARY KEY, "
+                  "total_activations INT, "
+                  "remaining_activations INT, "
+                  "platform VARCHAR(20), "
+                  "verification_code VARCHAR(100), "
+                  "license_file LONGBLOB, "
+                  "kyinfo_file LONGBLOB, "
+                  "bind_wechat VARCHAR(10), "
+                  "bind_person VARCHAR(50))")) {
+        qDebug() << "创建serial_numbers表失败:" << query.lastError();
+        return false;
+    }
+    
+    if (!query.exec("CREATE TABLE IF NOT EXISTS activation_info ("
+                   "id INT AUTO_INCREMENT PRIMARY KEY, "
+                   "serial_number VARCHAR(50), "
+                   "activation_code VARCHAR(100), "
+                   "project_number VARCHAR(50), "
+                   "chassis_number VARCHAR(50), "
+                   "FOREIGN KEY(serial_number) REFERENCES serial_numbers(serial_number))")) {
+        qDebug() << "创建activation_info表失败:" << query.lastError();
+        return false;
+    }
+    db.setConnectOptions("MYSQL_OPT_SSL_ENABLE=1;"
+                   "MYSQL_OPT_SSL_VERIFY_SERVER_CERT=0;"
+                   "MYSQL_OPT_CONNECT_TIMEOUT=3");
+    return true;
+}
+#if 0
+bool MainWindow::initDatabase()
+{
     db = QSqlDatabase::addDatabase("QSQLITE");
     db.setDatabaseName("kylin_activation.db");
 
@@ -198,6 +263,7 @@ bool MainWindow::initDatabase()
 
     return true;
 }
+#endif
 
 void MainWindow::loadSerialNumbers()
 {
