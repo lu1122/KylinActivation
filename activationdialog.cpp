@@ -16,8 +16,8 @@ void ActivationDialog::setupUI()
     mainLayout = new QVBoxLayout(this);
     formLayout = new QFormLayout();
     
-    serialCodeLabel = new QLabel("序列码:", this);
-    serialCodeEdit = new QLineEdit(this);
+    // serialCodeLabel = new QLabel("序列码:", this);
+    // serialCodeEdit = new QLineEdit(this);
     activationCodeLabel = new QLabel("激活码:", this);
     activationCodeEdit = new QLineEdit(this);
     projectNumberLabel = new QLabel("项目号:", this);
@@ -25,7 +25,7 @@ void ActivationDialog::setupUI()
     chassisNumberLabel = new QLabel("机箱序列号:", this);
     chassisNumberEdit = new QLineEdit(this);
     
-    formLayout->addRow(serialCodeLabel, serialCodeEdit);
+    // formLayout->addRow(serialCodeLabel, serialCodeEdit);
     formLayout->addRow(activationCodeLabel, activationCodeEdit);
     formLayout->addRow(projectNumberLabel, projectNumberEdit);
     formLayout->addRow(chassisNumberLabel, chassisNumberEdit);

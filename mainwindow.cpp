@@ -152,14 +152,13 @@ void MainWindow::setupSerialTable()
     serialTableView->setModel(serialModel);
 //    serialTableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     serialTableView->setContextMenuPolicy(Qt::CustomContextMenu);
-
+    // 禁用双击编辑
+    serialTableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
     serialTableLayout->addWidget(serialTableView);
     mainLayout->addWidget(serialTableGroup);
 
     // 连接信号槽
     connect(serialTableView, &QTreeView::customContextMenuRequested, this, &MainWindow::showSerialContextMenu);
-    // 禁用双击编辑
-    serialTableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
 }
 
 bool MainWindow::initDatabase()
@@ -610,7 +609,7 @@ void MainWindow::bindWechatChanged(int index)
 
 void MainWindow::uploadLicense()
 {
-    QString filePath = QFileDialog::getOpenFileName(this, "选择LICENSE文件"/*, "", "License Files (*.lic *.license)"*/);
+    QString filePath = QFileDialog::getOpenFileName(this, "选择LICENSE文件", "", "License Files (LICENSE)");
     if (!filePath.isEmpty()) {
         licenseFilePathLabel->setText(filePath);
     }
@@ -618,7 +617,7 @@ void MainWindow::uploadLicense()
 
 void MainWindow::uploadKyinfo()
 {
-    QString filePath = QFileDialog::getOpenFileName(this, "选择.kyinfo文件"/*, "", "Kyinfo Files (*.kyinfo)"*/);
+    QString filePath = QFileDialog::getOpenFileName(this, "选择.kyinfo文件", "", "Kyinfo Files (.kyinfo)");
     if (!filePath.isEmpty()) {
         kyinfoFilePathLabel->setText(filePath);
     }
@@ -670,19 +669,82 @@ void MainWindow::showSerialContextMenu(const QPoint &pos)
 }
 
 
+
 void MainWindow::modifyChildItem()
 {
     QModelIndex index = serialTableView->currentIndex();
-    if (!index.isValid() || !index.parent().isValid()) return;
+    if (!index.isValid() || !index.parent().isValid()) {
+        QMessageBox::warning(this, "警告", "请选择要修改的子项");
+        return;
+    }
+
+    // 获取当前列对应的字段名
+    QString fieldName;
+    switch(index.column()) {
+    case 9: fieldName = "激活码"; break;
+    case 10: fieldName = "项目号"; break;
+    case 11: fieldName = "机箱序列号"; break;
+    default:
+        QMessageBox::warning(this, "警告", "不能修改此列");
+        return;
+    }
 
     bool ok;
-    QString newValue = QInputDialog::getText(this, "修改子项", "输入新值:",
+    QString newValue = QInputDialog::getText(this, "修改"+fieldName, "输入新"+fieldName+":",
                                           QLineEdit::Normal, index.data().toString(), &ok);
-    if (ok && !newValue.isEmpty()) {
+    if (!ok || newValue.isEmpty()) return;
+
+    // 开始事务
+    QSqlDatabase::database().transaction();
+
+    try {
+        // 获取父项的序列号
+        QString serialNumber = serialModel->itemFromIndex(index.parent())->text();
+        
+        // 获取原来的激活码(第9列)
+        QString oldActivationCode = serialModel->itemFromIndex(index.parent())
+                                    ->child(index.row(), 9)->text();
+
+        // 准备SQL更新
+        QSqlQuery query;
+        QString columnName;
+        switch(index.column()) {
+        case 9: columnName = "activation_code"; break;
+        case 10: columnName = "project_number"; break;
+        case 11: columnName = "chassis_number"; break;
+        }
+
+        query.prepare(QString("UPDATE activation_info SET %1 = ? WHERE serial_number = ? AND activation_code = ?")
+                     .arg(columnName));
+        query.addBindValue(newValue);
+        query.addBindValue(serialNumber);
+        query.addBindValue(oldActivationCode);
+
+        if (!query.exec()) {
+            throw std::runtime_error("更新数据库失败: " + query.lastError().text().toStdString());
+        }
+
+        // 更新UI模型
         serialModel->itemFromIndex(index)->setText(newValue);
-        updateChildItemInDatabase(index);
+
+        // 如果是修改激活码，需要更新oldActivationCode引用
+        if (index.column() == 9) {
+            // 可能需要更新其他引用此激活码的地方
+        }
+
+        // 提交事务
+        if (!QSqlDatabase::database().commit()) {
+            throw std::runtime_error("提交事务失败");
+        }
+
+        QMessageBox::information(this, "成功", "修改已保存");
+
+    } catch (const std::exception &e) {
+        QSqlDatabase::database().rollback();
+        QMessageBox::critical(this, "错误", QString::fromStdString(e.what()));
     }
 }
+
 
 void MainWindow::deleteChildItem(const QModelIndex &index)
 {
@@ -761,14 +823,18 @@ void MainWindow::updateChildItemInDatabase(const QModelIndex &index)
 {
     if (!index.isValid() || !index.parent().isValid()) return;
 
+    // 获取父项的序列号
     QString serialNumber = serialModel->itemFromIndex(index.parent())->text();
-    QString oldActivationCode = serialModel->itemFromIndex(index.sibling(index.row(), 0))->text();
-    QString columnName;
+    
+    // 获取原来的激活码(第9列)
+    QString oldActivationCode = serialModel->itemFromIndex(index.parent())
+                                ->child(index.row(), 9)->text();
 
-    switch (index.column()) {
-    case 0: columnName = "activation_code"; break;
-    case 1: columnName = "project_number"; break;
-    case 2: columnName = "chassis_number"; break;
+    QString columnName;
+    switch(index.column()) {
+    case 9: columnName = "activation_code"; break;
+    case 10: columnName = "project_number"; break;
+    case 11: columnName = "chassis_number"; break;
     default: return;
     }
 
@@ -778,8 +844,12 @@ void MainWindow::updateChildItemInDatabase(const QModelIndex &index)
     query.addBindValue(index.data().toString());
     query.addBindValue(serialNumber);
     query.addBindValue(oldActivationCode);
-    query.exec();
+
+    if (!query.exec()) {
+        qDebug() << "更新子项失败:" << query.lastError().text();
+    }
 }
+
 
 void MainWindow::modifySerialNumber()
 {
@@ -954,7 +1024,7 @@ void MainWindow::downloadLicense()
         }
 
         QString savePath = QFileDialog::getSaveFileName(this, "保存LICENSE文件",
-                                                      serialNumber + ".license", "License Files (*.license)");
+                                                      "LICENSE", "License Files (LICENSE)");
         if (!savePath.isEmpty()) {
             QFile file(savePath);
             if (file.open(QIODevice::WriteOnly)) {
@@ -987,7 +1057,7 @@ void MainWindow::downloadKyinfo()
         }
 
         QString savePath = QFileDialog::getSaveFileName(this, "保存.kyinfo文件",
-                                                      serialNumber + ".kyinfo", "Kyinfo Files (*.kyinfo)");
+                                                      ".kyinfo", "Kyinfo Files (.kyinfo)");
         if (!savePath.isEmpty()) {
             QFile file(savePath);
             if (file.open(QIODevice::WriteOnly)) {

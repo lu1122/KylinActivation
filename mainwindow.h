@@ -46,8 +46,6 @@ private slots:
     void uploadKyinfo();
     void showSerialContextMenu(const QPoint &pos);
     void modifyChildItem();
-    void deleteChildItem(const QModelIndex &index);
-    void updateChildItemInDatabase(const QModelIndex &index);
     void modifySerialNumber();
     void addActivationInfo();
     void deleteSerialNumber();
@@ -123,7 +121,8 @@ private:
     bool verifyPassword();
     void updateSerialNumberInDatabase(const QModelIndex &index);
     void updateActivationInfoInDatabase(const QString &serialNumber, const QModelIndex &index);
-    
+    void updateChildItemInDatabase(const QModelIndex &index);
+    void deleteChildItem(const QModelIndex &index);
     void setupUI();
     void setupSerialForm();
     void setupSerialTable();
